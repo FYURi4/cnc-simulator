@@ -1,0 +1,15 @@
+﻿[package]
+name = "app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+engine-render = { path = "../engine-render" }
+wgpu.workspace = true
+winit.workspace = true
+glam.workspace = true
+anyhow.workspace = true
+pollster.workspace = true
+env_logger.workspace = true
+log.workspace = true
