@@ -3,6 +3,7 @@ use anyhow::Result;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
+use crate::camera::Camera;
 use crate::mesh::{Mesh, Vertex};
 use crate::texture::DepthTexture;
 
@@ -23,11 +24,11 @@ impl CameraUniform {
         }
     }
 
-    fn update(&mut self, eye: glam::Vec3, target: glam::Vec3, aspect: f32) {
-        let view = glam::Mat4::look_at_rh(eye, target, glam::Vec3::Y);
-        let proj = glam::Mat4::perspective_rh(45f32.to_radians(), aspect, 0.1, 100.0);
-        self.view_proj = (proj * view).to_cols_array_2d();
-        self.eye = eye.into();
+    fn from_camera(cam: &Camera) -> Self {
+        let mut u = Self::new();
+        u.view_proj = cam.view_proj().to_cols_array_2d();
+        u.eye = cam.position.into();
+        u
     }
 }
 
@@ -39,7 +40,7 @@ pub struct State {
     pub depth_texture: DepthTexture,
     pub mesh: Mesh,
     pub pipeline: wgpu::RenderPipeline,
-    #[allow(dead_code)]
+    pub camera: Camera,
     pub camera_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
 }
@@ -92,12 +93,8 @@ impl State {
         let depth_texture = DepthTexture::new(&device, &config)?;
         let mesh = Mesh::plane(&device, 20.0);
 
-        let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update(
-            glam::Vec3::new(6.0, 5.0, 6.0),
-            glam::Vec3::ZERO,
-            config.width as f32 / config.height as f32,
-        );
+        let camera = Camera::new(config.width as f32 / config.height as f32);
+        let camera_uniform = CameraUniform::from_camera(&camera);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera_uniform"),
@@ -181,6 +178,7 @@ impl State {
             depth_texture,
             mesh,
             pipeline,
+            camera,
             camera_buffer,
             camera_bind_group,
         })
@@ -190,10 +188,17 @@ impl State {
         if new_size.width > 0 && new_size.height > 0 {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
+            self.camera.aspect = self.config.width as f32 / self.config.height as f32;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture = DepthTexture::new(&self.device, &self.config)
                 .expect("recreate depth texture");
         }
+    }
+
+    pub fn update_camera(&mut self) {
+        let uniform = CameraUniform::from_camera(&self.camera);
+        self.queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));
     }
 
     pub fn render(&mut self) -> Result<()> {
@@ -217,7 +222,10 @@ impl State {
                     depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.05, g: 0.05, b: 0.08, a: 1.0,
+                            r: 0.05,
+                            g: 0.05,
+                            b: 0.08,
+                            a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -237,7 +245,10 @@ impl State {
             render_pass.set_pipeline(&self.pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.mesh.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.set_index_buffer(
+                self.mesh.index_buffer.slice(..),
+                wgpu::IndexFormat::Uint16,
+            );
             render_pass.draw_indexed(0..self.mesh.index_count, 0, 0..1);
         }
 
