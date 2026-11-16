@@ -281,14 +281,38 @@ impl State {
         idx
     }
 
-    pub fn update_object_vertices(&mut self, idx: usize, vertices: &[Vertex]) {
-        if idx < self.objects.len() {
-            self.queue.write_buffer(
-                &self.objects[idx].mesh.vertex_buffer,
-                0,
-                bytemuck::cast_slice(vertices),
-            );
+        pub fn update_object_vertices(&mut self, idx: usize, vertices: &[Vertex]) {
+        if idx >= self.objects.len() { return; }
+        let obj = &mut self.objects[idx];
+
+        let num_indices = vertices.len() as u32;
+        if num_indices == 0 { return; }
+
+        let new_v_size = (num_indices as usize * std::mem::size_of::<Vertex>()) as u64;
+        let new_i_size = (num_indices as usize * std::mem::size_of::<u16>()) as u64;
+
+        // Генерируем последовательные индексы (0, 1, 2, ...) для триангулированного меша
+        let indices: Vec<u16> = (0..num_indices).map(|i| i as u16).collect();
+
+        if obj.mesh.vertex_buffer.size() < new_v_size || obj.mesh.index_buffer.size() < new_i_size {
+            use wgpu::util::DeviceExt;
+            let v_buf = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("dynamic_vertices"),
+                contents: bytemuck::cast_slice(vertices),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            });
+            let i_buf = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("dynamic_indices"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            });
+            obj.mesh.vertex_buffer = v_buf;
+            obj.mesh.index_buffer = i_buf;
+        } else {
+            self.queue.write_buffer(&obj.mesh.vertex_buffer, 0, bytemuck::cast_slice(vertices));
+            self.queue.write_buffer(&obj.mesh.index_buffer, 0, bytemuck::cast_slice(&indices));
         }
+        obj.mesh.index_count = num_indices;
     }
 
     pub fn set_object_transform(&mut self, idx: usize, mat: glam::Mat4) {
