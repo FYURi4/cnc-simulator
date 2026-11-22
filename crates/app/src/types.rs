@@ -117,7 +117,7 @@ pub struct TransformOperation {
 }
 
 pub enum UiAction {
-    None, Save, Load, AddCube, AddPlane, AddCylinder, AddSphere, AddPyramid, 
+    None, Save, Load, AddCube, AddPlane, AddCylinder, AddSphere, AddPyramid, LoadGcode,
     DeleteSelected, Undo, Redo, SetMode(TransformMode), SetOriginToCursor, SetOriginToGeometry,
 }
 

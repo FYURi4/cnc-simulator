@@ -1,6 +1,7 @@
 struct Camera {
     view_proj: mat4x4<f32>,
     eye: vec3<f32>,
+    grid_extent: f32,  
 }
 struct Object {
     model: mat4x4<f32>,
@@ -73,7 +74,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
 
     let dist = length(in.world_pos.xz);
-    let fade = 1.0 - smoothstep(8.0, 14.0, dist);
+    let fade_start = camera.grid_extent * 0.6;
+    let fade_end   = camera.grid_extent;
+    let fade = 1.0 - smoothstep(fade_start, fade_end, dist);
     alpha *= fade;
 
     if (alpha < 0.01) {

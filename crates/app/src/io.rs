@@ -154,7 +154,7 @@ pub fn build_default_scene(state: &mut State, scene: &mut Scene, render_map: &mu
     scene.world.entity_mut(plane_e).insert(Locked);
     scene.set_name(plane_e, "Grid");
     scene.world.entity_mut(plane_e).insert(MeshKindComp(MeshKind::Plane));
-    let plane_idx = state.add_object(Mesh::plane(&state.device, 20.0), ObjectKind::Grid, Some(MeshKind::Plane));
+    let plane_idx = state.add_object(Mesh::plane(&state.device, 500.0), ObjectKind::Grid, Some(MeshKind::Plane));
     render_map.push((plane_e, plane_idx));
 
     let cursor_e = scene.spawn(Transform::default());
@@ -181,4 +181,11 @@ pub fn build_default_scene(state: &mut State, scene: &mut Scene, render_map: &mu
     crate::editor::update_object_mesh(state, scene, render_map, cube_e, &[]);
 
     (plane_e, cursor_e)
+}
+
+use engine_core::gcode::GCodeProgram;
+
+pub fn load_gcode_program(path: &str) -> Result<GCodeProgram> {
+    let source = fs::read_to_string(path)?;
+    Ok(GCodeProgram::parse(&source))
 }

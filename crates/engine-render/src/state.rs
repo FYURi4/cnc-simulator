@@ -14,7 +14,7 @@ use crate::texture::DepthTexture;
 struct CameraUniform {
     view_proj: [[f32; 4]; 4],
     eye: [f32; 3],
-    _pad: f32,
+    grid_extent: f32,
 }
 
 impl CameraUniform {
@@ -22,7 +22,7 @@ impl CameraUniform {
         Self {
             view_proj: cam.view_proj().to_cols_array_2d(),
             eye: cam.position.into(),
-            _pad: 0.0,
+            grid_extent: 50.0,
         }
     }
 }
@@ -52,6 +52,7 @@ pub struct RenderObject {
 }
 
 pub struct State {
+    pub grid_extent: f32,
     pub surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -236,6 +237,7 @@ impl State {
             camera,
             camera_buffer,
             camera_bind_group,
+            grid_extent: 50.0,
             objects: Vec::new(),
             window,
             egui_ctx,
@@ -346,7 +348,8 @@ impl State {
     }
 
     pub fn update_camera(&mut self) {
-        let uniform = CameraUniform::from_camera(&self.camera);
+        let mut uniform = CameraUniform::from_camera(&self.camera);
+        uniform.grid_extent = self.grid_extent;
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));
     }
 

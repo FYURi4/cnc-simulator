@@ -40,6 +40,7 @@ pub struct App {
     pub selected_elements: Vec<Selection>,
     pub edit_handles: Vec<usize>,
     pub snap: SnapSettings,
+    pub gcode: engine_core::gcode::GCodeProgram,
     pub history: History,
     pub select_tool: SelectTool,
     pub drag_start: Option<Vec2>,
@@ -57,6 +58,7 @@ impl App {
             grid_entity: None, cursor_entity: None, transform_mode: TransformMode::Translate,
             edit_mode: EditMode::Object, select_mode: SelectMode::Face, selected_elements: Vec::new(), edit_handles: Vec::new(),
             snap: SnapSettings { enabled: false, target: SnapTarget::Increment, increment: 0.5 },
+            gcode: engine_core::gcode::GCodeProgram::default(),
             history: History::new(),
             select_tool: SelectTool::Click,
             drag_start: None,
@@ -65,49 +67,55 @@ impl App {
             transform_operation: None,
         }
     }
+
     fn begin_transform(&mut self, mode: TransformMode) {
-        if self.edit_mode != EditMode::Object {
-            return;
-        }
-
-        let Some(entity) = self.selected else {
-            return;
-        };
-
-        let Some(transform) = self.scene.world.get::<Transform>(entity).cloned() else {
-            return;
-        };
-
+        if self.edit_mode != EditMode::Object { return; }
+        let Some(entity) = self.selected else { return; };
+        let Some(transform) = self.scene.world.get::<Transform>(entity).cloned() else { return; };
         let camera = &self.state.as_ref().unwrap().camera;
-
-        let Some(global_matrix) = self.scene.global_matrix(entity) else {
-            return;
-        };
-
+        let Some(global_matrix) = self.scene.global_matrix(entity) else { return; };
         let pivot_world = global_matrix.transform_point3(Vec3::ZERO);
-        let pivot_screen = world_to_screen(
-            camera,
-            self.viewport_size,
-            pivot_world,
-        );
+        let pivot_screen = world_to_screen(camera, self.viewport_size, pivot_world);
 
         self.transform_operation = Some(TransformOperation {
-            entity,
-            mode,
-            axis: None,
-
+            entity, mode, axis: None,
             start_translation: transform.translation,
             start_rotation: transform.rotation,
             start_scale: transform.scale,
-
             start_mouse_screen: self.input.cursor_pos,
             pivot_screen,
             screen_axis_dir: Vec2::ZERO,
-
             numeric_input: String::new(),
             numeric_value: None,
         });
         println!("Transform started: {:?}", mode);
+    }
+
+    /// FIX: общий хелпер для подтверждения G/R/S с записью в историю.
+    /// Возвращает true, если трансформация была активна и была отменена/подтверждена.
+    fn confirm_transform_if_changed(&mut self, label: &str) -> bool {
+        let Some(op) = self.transform_operation.take() else { return false; };
+        let changed = if let Some(t) = self.scene.world.get::<Transform>(op.entity) {
+            t.translation != op.start_translation
+                || t.rotation != op.start_rotation
+                || t.scale != op.start_scale
+        } else { false };
+        if changed {
+            self.history.record(capture_snapshot(&mut self.scene));
+            println!("Transform confirmed ({})", label);
+        }
+        true
+    }
+
+    fn cancel_transform(&mut self) -> bool {
+        let Some(op) = self.transform_operation.take() else { return false; };
+        if let Some(mut t) = self.scene.world.get_mut::<Transform>(op.entity) {
+            t.translation = op.start_translation;
+            t.rotation = op.start_rotation;
+            t.scale = op.start_scale;
+        }
+        println!("Transform cancelled");
+        true
     }
 }
 
@@ -144,11 +152,7 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                self.viewport_size = Vec2::new(
-                    size.width as f32,
-                    size.height as f32,
-                );
-
+                self.viewport_size = Vec2::new(size.width as f32, size.height as f32);
                 let state = self.state.as_mut().unwrap();
                 state.resize(size);
                 state.update_camera();
@@ -158,7 +162,6 @@ impl ApplicationHandler for App {
                 let delta = new_pos - self.input.cursor_pos;
                 self.input.cursor_pos = new_pos;
 
-                // Активная трансформация G/R/S.
                 if self.transform_operation.is_some()
                     && !self.input.mmb_down
                     && !self.input.rmb_down
@@ -166,36 +169,23 @@ impl ApplicationHandler for App {
                     self.update_transform_operation(new_pos);
                 }
 
-                // MMB — вращение вокруг точки фокуса.
-                // Shift + MMB — панорамирование.
                 if self.input.mmb_down {
                     let state = self.state.as_mut().unwrap();
-
                     if self.input.keys.contains(&KeyCode::ShiftLeft)
                         || self.input.keys.contains(&KeyCode::ShiftRight)
                     {
                         state.camera.pan(delta, self.viewport_size.y);
                     } else {
                         let sensitivity = 0.005;
-                        state.camera.orbit(
-                            delta.x * sensitivity,
-                            -delta.y * sensitivity,
-                        );
+                        state.camera.orbit(delta.x * sensitivity, -delta.y * sensitivity);
                     }
-
                     state.update_camera();
                 }
 
-                // RMB — свободное вращение камеры с сохранением позиции.
                 if self.input.rmb_down {
                     let sensitivity = 0.005;
                     let state = self.state.as_mut().unwrap();
-
-                    state.camera.rotate(
-                        delta.x * sensitivity,
-                        -delta.y * sensitivity,
-                    );
-
+                    state.camera.rotate(delta.x * sensitivity, -delta.y * sensitivity);
                     state.update_camera();
                 }
 
@@ -212,25 +202,16 @@ impl ApplicationHandler for App {
                                 if len_sq > 1.0 {
                                     let proj = d.dot(drag.screen_axis_dir) / len_sq;
                                     let mut new_world = drag.start_world_pos + drag.axis * proj;
-                                    
                                     if self.snap.enabled {
                                         let state = self.state.as_ref().unwrap();
                                         new_world = apply_snap(new_world, drag.start_world_pos, drag.axis, &self.snap, &self.scene, &self.render_map, &state.objects, drag.entity);
                                     }
-
                                     let obj_gt = self.scene.global_matrix(drag.entity).unwrap_or(Mat4::IDENTITY);
                                     let local_new = obj_gt.inverse().transform_point3(new_world);
                                     let delta_local = local_new - obj_gt.inverse().transform_point3(drag.start_world_pos);
-
                                     let mut custom = start_verts.clone();
-                                    for &idx in &drag.selected_indices {
-                                        custom[idx] += delta_local;
-                                    }
-
-                                    if let Some(mut cm) = self.scene.world.get_mut::<CustomMesh>(drag.entity) {
-                                        cm.vertices = custom.clone();
-                                    }
-                                    
+                                    for &idx in &drag.selected_indices { custom[idx] += delta_local; }
+                                    if let Some(mut cm) = self.scene.world.get_mut::<CustomMesh>(drag.entity) { cm.vertices = custom.clone(); }
                                     if let Some(kind) = self.scene.world.get::<MeshKindComp>(drag.entity).map(|m| m.0) {
                                         let new_vertices = build_mesh_vertices(&self.scene, drag.entity, kind, &self.selected_elements);
                                         if let Some((_, r_idx)) = self.render_map.iter().find(|(e, _)| *e == drag.entity) {
@@ -263,6 +244,10 @@ impl ApplicationHandler for App {
                                     if delta_a > PI { delta_a -= 2.0 * PI; }
                                     if delta_a < -PI { delta_a += 2.0 * PI; }
                                     delta_a = -delta_a;
+                                    if self.snap.enabled {
+                                        let step = 15.0_f32.to_radians();
+                                        delta_a = (delta_a / step).round() * step;
+                                    }
                                     let new_rot = Quat::from_axis_angle(drag.axis, delta_a) * drag.start_rotation;
                                     if let Some(mut t) = self.scene.world.get_mut::<Transform>(drag.entity) { t.rotation = new_rot; }
                                 }
@@ -289,41 +274,32 @@ impl ApplicationHandler for App {
                         ElementState::Pressed => {
                             let ctrl = self.input.keys.contains(&KeyCode::ControlLeft) || self.input.keys.contains(&KeyCode::ControlRight);
                             match code {
-                                
-                                KeyCode::Enter | KeyCode::NumpadEnter => {
-                                    if self.transform_operation.take().is_some() {
-                                        println!("Transform confirmed");
+                                KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ
+                                    if self.transform_operation.is_some() && !ctrl =>
+                                {
+                                    let axis = match code {
+                                        KeyCode::KeyX => Vec3::X,
+                                        KeyCode::KeyY => Vec3::Y,
+                                        _             => Vec3::Z,
+                                    };
+                                    if let Some(op) = self.transform_operation.as_mut() {
+                                        op.axis = if op.axis == Some(axis) { None } else { Some(axis) };
                                     }
+                                }
+                                KeyCode::Enter | KeyCode::NumpadEnter => {
+                                    // FIX: записываем историю при подтверждении G/R/S
+                                    self.confirm_transform_if_changed("Enter");
                                 }
 
                                 KeyCode::Escape => {
-                                    if let Some(operation) = self.transform_operation.take() {
-                                        if let Some(mut transform) =
-                                            self.scene.world.get_mut::<Transform>(operation.entity)
-                                        {
-                                            transform.translation = operation.start_translation;
-                                            transform.rotation = operation.start_rotation;
-                                            transform.scale = operation.start_scale;
-                                        }
-
-                                        println!("Transform cancelled");
-                                    }
+                                    self.cancel_transform();
                                 }
 
-                                KeyCode::KeyG => {
-                                    self.begin_transform(TransformMode::Translate);
-                                }
+                                KeyCode::KeyG => { self.begin_transform(TransformMode::Translate); }
+                                KeyCode::KeyR => { self.begin_transform(TransformMode::Rotate); }
+                                KeyCode::KeyS => { self.begin_transform(TransformMode::Scale); }
 
-                                KeyCode::KeyR => {
-                                    self.begin_transform(TransformMode::Rotate);
-                                }
-
-                                KeyCode::KeyS => {
-                                    self.begin_transform(TransformMode::Scale);
-                                }
-                                KeyCode::NumpadDecimal | KeyCode::Period | KeyCode::KeyF => {
-                                    self.frame_selected();
-                                }
+                                KeyCode::NumpadDecimal | KeyCode::Period | KeyCode::KeyF => { self.frame_selected(); }
                                 KeyCode::Home => {
                                     let state = self.state.as_mut().unwrap();
                                     state.camera.reset();
@@ -356,52 +332,28 @@ impl ApplicationHandler for App {
                                     }
                                 }
                                 KeyCode::Digit1 => {
-                                    if self.edit_mode == EditMode::Edit { 
-                                        self.select_mode = SelectMode::Vertex; 
-                                        self.selected_elements.clear(); 
-                                        update_edit_handles(
-                                            self.state.as_mut().unwrap(),
-                                            &mut self.scene,
-                                            self.edit_mode,
-                                            self.select_mode,
-                                            self.selected,
-                                            &mut self.edit_handles,
-                                        );
-                                        update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, self.selected.unwrap(), &[]); 
-                                    }
-                                    else { self.transform_mode = TransformMode::Translate; }
+                                    if self.edit_mode == EditMode::Edit {
+                                        self.select_mode = SelectMode::Vertex;
+                                        self.selected_elements.clear();
+                                        update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
+                                        update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, self.selected.unwrap(), &[]);
+                                    } else { self.transform_mode = TransformMode::Translate; }
                                 }
                                 KeyCode::Digit2 => {
-                                    if self.edit_mode == EditMode::Edit { 
-                                        self.select_mode = SelectMode::Edge; 
-                                        self.selected_elements.clear(); 
-                                        update_edit_handles(
-                                            self.state.as_mut().unwrap(),
-                                            &mut self.scene,
-                                            self.edit_mode,
-                                            self.select_mode,
-                                            self.selected,
-                                            &mut self.edit_handles,
-                                        );
-                                        update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, self.selected.unwrap(), &[]); 
-                                    }
-                                    else { self.transform_mode = TransformMode::Rotate; }
+                                    if self.edit_mode == EditMode::Edit {
+                                        self.select_mode = SelectMode::Edge;
+                                        self.selected_elements.clear();
+                                        update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
+                                        update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, self.selected.unwrap(), &[]);
+                                    } else { self.transform_mode = TransformMode::Rotate; }
                                 }
                                 KeyCode::Digit3 => {
-                                    if self.edit_mode == EditMode::Edit { 
-                                        self.select_mode = SelectMode::Face; 
-                                        self.selected_elements.clear(); 
-                                        update_edit_handles(
-                                            self.state.as_mut().unwrap(),
-                                            &mut self.scene,
-                                            self.edit_mode,
-                                            self.select_mode,
-                                            self.selected,
-                                            &mut self.edit_handles,
-                                        );
-                                        update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, self.selected.unwrap(), &[]); 
-                                    }
-                                    else { self.transform_mode = TransformMode::Scale; }
+                                    if self.edit_mode == EditMode::Edit {
+                                        self.select_mode = SelectMode::Face;
+                                        self.selected_elements.clear();
+                                        update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
+                                        update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, self.selected.unwrap(), &[]);
+                                    } else { self.transform_mode = TransformMode::Scale; }
                                 }
                                 KeyCode::KeyX | KeyCode::Delete => {
                                     if self.edit_mode == EditMode::Edit {
@@ -421,9 +373,7 @@ impl ApplicationHandler for App {
                                                         for s in &self.selected_elements {
                                                             if let Selection::Vertex(v) = s {
                                                                 for (i, face) in faces.iter().enumerate() {
-                                                                    if face.contains(v) {
-                                                                        cm.deleted_faces.insert(i);
-                                                                    }
+                                                                    if face.contains(v) { cm.deleted_faces.insert(i); }
                                                                 }
                                                             }
                                                         }
@@ -448,14 +398,12 @@ impl ApplicationHandler for App {
                                                 }).collect();
                                                 verts.sort_unstable();
                                                 verts.dedup();
-                                                
                                                 if verts.len() >= 2 {
                                                     let target = verts[0];
                                                     let mut center = Vec3::ZERO;
                                                     for &v in &verts { center += cm.vertices[v]; }
                                                     center /= verts.len() as f32;
                                                     cm.vertices[target] = center;
-                                                    
                                                     for face in &mut faces {
                                                         for i in 0..face.len() {
                                                             if verts[1..].contains(&face[i]) { face[i] = target; }
@@ -464,15 +412,12 @@ impl ApplicationHandler for App {
                                                         for &v in face.iter() {
                                                             if unique_face.last() != Some(&v) { unique_face.push(v); }
                                                         }
-                                                        if unique_face.first() == unique_face.last() && unique_face.len() > 1 {
-                                                            unique_face.pop();
-                                                        }
+                                                        if unique_face.first() == unique_face.last() && unique_face.len() > 1 { unique_face.pop(); }
                                                         *face = unique_face;
                                                     }
                                                     faces.retain(|f| f.len() >= 3);
                                                     cm.custom_faces = Some(faces);
                                                     cm.deleted_faces.clear();
-                                                    
                                                     self.selected_elements = vec![Selection::Vertex(target)];
                                                 }
                                             }
@@ -481,8 +426,14 @@ impl ApplicationHandler for App {
                                         }
                                     }
                                 }
-                                KeyCode::KeyZ if ctrl => self.do_undo(),
-                                KeyCode::KeyY if ctrl => self.do_redo(),
+                                KeyCode::KeyZ if ctrl => {
+                                    self.do_undo();
+                                    self.transform_operation = None;
+                                },
+                                KeyCode::KeyY if ctrl => {
+                                    self.do_redo();
+                                    self.transform_operation = None;
+                                },
                                 _ => {}
                             }
                             self.input.keys.insert(code);
@@ -497,11 +448,15 @@ impl ApplicationHandler for App {
                         if btn_state == ElementState::Pressed {
                             self.input.lmb_down = true;
                             self.drag_moved = false;
-                            
+
                             if self.edit_mode == EditMode::Edit && self.select_tool == SelectTool::Box {
                                 self.drag_start = Some(self.input.cursor_pos);
                                 self.drag_end = Some(self.input.cursor_pos);
                             } else {
+                                // FIX: LMB подтверждает G/R/S с записью истории
+                                if self.confirm_transform_if_changed("LMB") {
+                                    return;
+                                }
                                 handle_lmb_press(
                                     self.state.as_mut().unwrap(), &self.input, self.viewport_size,
                                     &mut self.selected, &mut self.selected_elements, &mut self.drag,
@@ -511,17 +466,14 @@ impl ApplicationHandler for App {
                             }
                         } else {
                             self.input.lmb_down = false;
-                            
                             if let Some(start) = self.drag_start.take() {
                                 if let Some(end) = self.drag_end.take() {
                                     let min_x = start.x.min(end.x);
                                     let max_x = start.x.max(end.x);
                                     let min_y = start.y.min(end.y);
                                     let max_y = start.y.max(end.y);
-                                    
                                     let ctrl = self.input.keys.contains(&KeyCode::ControlLeft) || self.input.keys.contains(&KeyCode::ShiftLeft);
                                     if !ctrl { self.selected_elements.clear(); }
-                                    
                                     if let Some(sel) = self.selected {
                                         if let Some(custom) = self.scene.world.get::<CustomMesh>(sel) {
                                             if let Some(gt) = self.scene.global_matrix(sel) {
@@ -578,26 +530,22 @@ impl ApplicationHandler for App {
                         }
                     }
                     MouseButton::Right => {
-                            self.input.rmb_down = btn_state == ElementState::Pressed;
-                        }
+                        self.cancel_transform();
+                        self.input.rmb_down = btn_state == ElementState::Pressed;
+                    }
 
-                        MouseButton::Middle => {
-                            self.input.mmb_down = btn_state == ElementState::Pressed;
-                        }
-
-                        _ => {}
+                    MouseButton::Middle => {
+                        self.input.mmb_down = btn_state == ElementState::Pressed;
+                    }
+                    _ => {}
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scroll = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(position) => {
-                        position.y as f32 / 100.0
-                    }
+                    MouseScrollDelta::PixelDelta(position) => position.y as f32 / 100.0,
                 };
-
                 let state = self.state.as_mut().unwrap();
-
                 state.camera.zoom(scroll);
                 state.update_camera();
             }
@@ -618,7 +566,6 @@ impl ApplicationHandler for App {
                             state.set_object_transform(*idx, mat);
                         }
                     }
-                    
                     if self.edit_mode == EditMode::Edit {
                         if let Some(sel) = self.selected {
                             if let Some(custom) = self.scene.world.get::<CustomMesh>(sel) {
@@ -627,26 +574,19 @@ impl ApplicationHandler for App {
                                     let faces = get_current_faces(&self.scene, sel, kind);
                                     let edges = get_current_edges(&faces);
                                     let handles = get_handles_for_mode(self.select_mode, &faces, &edges, &custom.vertices);
-                                    
                                     for (i, &local_pos) in handles.iter().enumerate() {
                                         if i < self.edit_handles.len() {
                                             let world = gt.transform_point3(local_pos);
                                             state.set_object_transform(self.edit_handles[i], Mat4::from_translation(world) * Mat4::from_scale(Vec3::splat(0.05)));
-                                            
                                             let is_selected = self.selected_elements.iter().any(|s| match s {
                                                 Selection::Vertex(idx) => self.select_mode == SelectMode::Vertex && *idx == i,
                                                 Selection::Edge(a, b) => {
-                                                    if self.select_mode == SelectMode::Edge {
-                                                        edges.get(i) == Some(&(*a, *b))
-                                                    } else { false }
+                                                    if self.select_mode == SelectMode::Edge { edges.get(i) == Some(&(*a, *b)) } else { false }
                                                 },
                                                 Selection::Face(face_indices) => {
-                                                    if self.select_mode == SelectMode::Face {
-                                                        faces.get(i) == Some(face_indices)
-                                                    } else { false }
+                                                    if self.select_mode == SelectMode::Face { faces.get(i) == Some(face_indices) } else { false }
                                                 }
                                             });
-                                            
                                             if is_selected {
                                                 state.set_object_tint(self.edit_handles[i], [1.0, 0.5, 0.0, 1.0]);
                                             } else {
@@ -683,6 +623,11 @@ impl ApplicationHandler for App {
                 let render_map_clone = self.render_map.clone();
                 let state = self.state.as_mut().unwrap();
                 let mut pending_vertex_update: Option<(Entity, Vec<Vertex>)> = None;
+                let mut grid_extent_ui = state.grid_extent;
+
+                // FIX: флаг "было ли изменение через numeric input".
+                // Ставится внутри closure, применяется после.
+                let mut pending_history_record = false;
 
                 let result = state.render_with_ui(|ctx| {
                     egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
@@ -690,6 +635,7 @@ impl ApplicationHandler for App {
                             ui.menu_button("File", |ui| {
                                 if ui.button("💾 Save").clicked() { ui_action = UiAction::Save; ui.close(); }
                                 if ui.button("📂 Load").clicked() { ui_action = UiAction::Load; ui.close(); }
+                                if ui.button("⚙ Load G-code").clicked() { ui_action = UiAction::LoadGcode; ui.close(); }
                             });
                             ui.menu_button("Add", |ui| {
                                 if ui.button("Cube").clicked() { ui_action = UiAction::AddCube; ui.close(); }
@@ -699,10 +645,16 @@ impl ApplicationHandler for App {
                                 if ui.button("Pyramid").clicked() { ui_action = UiAction::AddPyramid; ui.close(); }
                             });
                             if ui.button("🗑 Delete").clicked() { ui_action = UiAction::DeleteSelected; }
+                            ui.label("Grid");
+                            ui.add(
+                                egui::Slider::new(&mut grid_extent_ui, 10.0..=500.0)
+                                    .logarithmic(true)
+                                    .text("Extent"),
+                            );
                             ui.separator();
                             if ui.add_enabled(can_undo, egui::Button::new("↶")).clicked() { ui_action = UiAction::Undo; }
                             if ui.add_enabled(can_redo, egui::Button::new("↷")).clicked() { ui_action = UiAction::Redo; }
-                            
+
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 egui::ComboBox::from_id_salt("snap_target")
                                     .selected_text(format!("{:?}", snap.target))
@@ -771,7 +723,7 @@ impl ApplicationHandler for App {
                                             ui.label(format!("Name: {}", name));
                                         }
                                         ui.separator();
-                                        
+
                                         if edit_m == EditMode::Edit && !selected_elements.is_empty() {
                                             if let Some(mut custom) = scene.world.get_mut::<CustomMesh>(sel) {
                                                 let mut unique_verts = std::collections::HashSet::new();
@@ -786,27 +738,29 @@ impl ApplicationHandler for App {
                                                     let mut center = Vec3::ZERO;
                                                     for &i in &unique_verts { center += custom.vertices[i]; }
                                                     center /= unique_verts.len() as f32;
-
                                                     let mut new_center = center;
                                                     ui.label("Selection Center:");
                                                     let mut changed = false;
                                                     egui::Grid::new("sel_grid").show(ui, |ui| {
                                                         ui.label("Location X");
-                                                        changed |= ui.add(egui::DragValue::new(&mut new_center.x).speed(0.02)).changed();
+                                                        let r = ui.add(egui::DragValue::new(&mut new_center.x).speed(0.02));
+                                                        changed |= r.changed();
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                         ui.end_row();
                                                         ui.label("Location Y");
-                                                        changed |= ui.add(egui::DragValue::new(&mut new_center.y).speed(0.02)).changed();
+                                                        let r = ui.add(egui::DragValue::new(&mut new_center.y).speed(0.02));
+                                                        changed |= r.changed();
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                         ui.end_row();
                                                         ui.label("Location Z");
-                                                        changed |= ui.add(egui::DragValue::new(&mut new_center.z).speed(0.02)).changed();
+                                                        let r = ui.add(egui::DragValue::new(&mut new_center.z).speed(0.02));
+                                                        changed |= r.changed();
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                         ui.end_row();
                                                     });
-
                                                     if changed {
                                                         let delta = new_center - center;
-                                                        for &i in &unique_verts {
-                                                            custom.vertices[i] += delta;
-                                                        }
+                                                        for &i in &unique_verts { custom.vertices[i] += delta; }
                                                         let kind = scene.world.get::<MeshKindComp>(sel).unwrap().0;
                                                         let new_vertices = build_mesh_vertices(&scene, sel, kind, &selected_elements);
                                                         if render_map_clone.iter().any(|(e, _)| *e == sel) {
@@ -828,38 +782,50 @@ impl ApplicationHandler for App {
                                                 ui.label("Transform:");
                                                 egui::Grid::new("transform_grid").show(ui, |ui| {
                                                     ui.label("Location X");
-                                                    ui.add(egui::DragValue::new(&mut t.translation.x).speed(0.02));
+                                                    let r = ui.add(egui::DragValue::new(&mut t.translation.x).speed(0.02));
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                     ui.end_row();
                                                     ui.label("Location Y");
-                                                    ui.add(egui::DragValue::new(&mut t.translation.y).speed(0.02));
+                                                    let r = ui.add(egui::DragValue::new(&mut t.translation.y).speed(0.02));
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                     ui.end_row();
                                                     ui.label("Location Z");
-                                                    ui.add(egui::DragValue::new(&mut t.translation.z).speed(0.02));
+                                                    let r = ui.add(egui::DragValue::new(&mut t.translation.z).speed(0.02));
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                     ui.end_row();
 
                                                     let (mut rx, mut ry, mut rz) = t.rotation.to_euler(glam::EulerRot::XYZ);
                                                     let mut rot_changed = false;
                                                     ui.label("Rotation X");
-                                                    rot_changed |= ui.add(egui::DragValue::new(&mut rx).speed(0.01)).changed();
+                                                    let r = ui.add(egui::DragValue::new(&mut rx).speed(0.01));
+                                                    rot_changed |= r.changed();
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                     ui.end_row();
                                                     ui.label("Rotation Y");
-                                                    rot_changed |= ui.add(egui::DragValue::new(&mut ry).speed(0.01)).changed();
+                                                    let r = ui.add(egui::DragValue::new(&mut ry).speed(0.01));
+                                                    rot_changed |= r.changed();
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                     ui.end_row();
                                                     ui.label("Rotation Z");
-                                                    rot_changed |= ui.add(egui::DragValue::new(&mut rz).speed(0.01)).changed();
+                                                    let r = ui.add(egui::DragValue::new(&mut rz).speed(0.01));
+                                                    rot_changed |= r.changed();
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                     ui.end_row();
                                                     if rot_changed {
                                                         t.rotation = glam::Quat::from_euler(glam::EulerRot::XYZ, rx, ry, rz);
                                                     }
 
                                                     ui.label("Scale X");
-                                                    ui.add(egui::DragValue::new(&mut t.scale.x).speed(0.02).range(0.01..=100.0));
+                                                    let r = ui.add(egui::DragValue::new(&mut t.scale.x).speed(0.02).range(0.01..=100.0));
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                     ui.end_row();
                                                     ui.label("Scale Y");
-                                                    ui.add(egui::DragValue::new(&mut t.scale.y).speed(0.02).range(0.01..=100.0));
+                                                    let r = ui.add(egui::DragValue::new(&mut t.scale.y).speed(0.02).range(0.01..=100.0));
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                     ui.end_row();
                                                     ui.label("Scale Z");
-                                                    ui.add(egui::DragValue::new(&mut t.scale.z).speed(0.02).range(0.01..=100.0));
+                                                    let r = ui.add(egui::DragValue::new(&mut t.scale.z).speed(0.02).range(0.01..=100.0));
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                     ui.end_row();
                                                 });
                                             }
@@ -869,13 +835,16 @@ impl ApplicationHandler for App {
                                         egui::Grid::new("cursor_grid").show(ui, |ui| {
                                             if let Some(mut t) = scene.world.get_mut::<Transform>(cursor_e) {
                                                 ui.label("Location X");
-                                                ui.add(egui::DragValue::new(&mut t.translation.x).speed(0.05));
+                                                let r = ui.add(egui::DragValue::new(&mut t.translation.x).speed(0.05));
+                                                if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                 ui.end_row();
                                                 ui.label("Location Y");
-                                                ui.add(egui::DragValue::new(&mut t.translation.y).speed(0.05));
+                                                let r = ui.add(egui::DragValue::new(&mut t.translation.y).speed(0.05));
+                                                if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                 ui.end_row();
                                                 ui.label("Location Z");
-                                                ui.add(egui::DragValue::new(&mut t.translation.z).speed(0.05));
+                                                let r = ui.add(egui::DragValue::new(&mut t.translation.z).speed(0.05));
+                                                if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
                                                 ui.end_row();
                                             }
                                         });
@@ -899,26 +868,30 @@ impl ApplicationHandler for App {
                             });
                     }
                 });
+
+                if (state.grid_extent - grid_extent_ui).abs() > 0.01 {
+                    state.grid_extent = grid_extent_ui;
+                    state.update_camera();
+                }
+
                 self.scene = scene;
                 self.editing_entity = editing;
-                
+
+                // FIX: запись в историю после numeric input
+                if pending_history_record {
+                    self.history.record(capture_snapshot(&mut self.scene));
+                }
+
                 if let Some((sel, verts)) = pending_vertex_update {
                     if let Some((_, r_idx)) = self.render_map.iter().find(|(e, _)| *e == sel) {
                         self.state.as_mut().unwrap().update_object_vertices(*r_idx, &verts);
                     }
                 }
-                
+
                 if self.select_mode != ui_sel_m {
                     self.select_mode = ui_sel_m;
                     self.selected_elements.clear();
-                    update_edit_handles(
-                        self.state.as_mut().unwrap(),
-                        &mut self.scene,
-                        self.edit_mode,
-                        self.select_mode,
-                        self.selected,
-                        &mut self.edit_handles,
-                    );
+                    update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
                 }
                 self.select_tool = ui_sel_tool;
 
@@ -935,14 +908,7 @@ impl ApplicationHandler for App {
                         set_selection(self.state.as_mut().unwrap(), &self.render_map, old, self.selected);
                         self.edit_mode = EditMode::Object;
                         self.selected_elements.clear();
-                        update_edit_handles(
-                            self.state.as_mut().unwrap(),
-                            &mut self.scene,
-                            self.edit_mode,
-                            self.select_mode,
-                            self.selected,
-                            &mut self.edit_handles,
-                        );
+                        update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
                     }
                 }
 
@@ -969,7 +935,6 @@ impl App {
         let speed = if input.keys.contains(&KeyCode::ShiftLeft) || input.keys.contains(&KeyCode::ShiftRight) { 15.0 } else { 5.0 };
         let forward = state.camera.forward();
         let right = state.camera.right();
-
         let mut dir = Vec3::ZERO;
         if input.keys.contains(&KeyCode::KeyW) { dir += forward; }
         if input.keys.contains(&KeyCode::KeyS) { dir -= forward; }
@@ -977,7 +942,6 @@ impl App {
         if input.keys.contains(&KeyCode::KeyA) { dir -= right; }
         if input.keys.contains(&KeyCode::KeyE) { dir += Vec3::Y; }
         if input.keys.contains(&KeyCode::KeyQ) { dir -= Vec3::Y; }
-
         if dir.length_squared() > 0.0 {
             dir = dir.normalize();
             state.camera.translate(dir * speed * dt);
@@ -986,49 +950,67 @@ impl App {
     }
 
     fn update_transform_operation(&mut self, mouse_pos: Vec2) {
-        let Some(operation) = self.transform_operation.clone() else {
-            return;
-        };
-
-        if operation.mode != TransformMode::Translate {
-            return;
-        }
-
-        let Some(state) = self.state.as_ref() else {
-            return;
-        };
-
+        let Some(operation) = self.transform_operation.clone() else { return; };
+        let Some(state) = self.state.as_ref() else { return; };
         let delta = mouse_pos - operation.start_mouse_screen;
 
-        // Размер перемещения в мировых единицах на один пиксель.
-        let units_per_pixel =
-            2.0 * state.camera.distance
-            * (state.camera.fovy * 0.5).tan()
-            / self.viewport_size.y.max(1.0);
-
-        // Перемещение относительно направления камеры.
-        let world_delta =
-            state.camera.right() * delta.x * units_per_pixel
-            - state.camera.up() * delta.y * units_per_pixel;
-
-        // Переводим мировое смещение в локальное,
-        // если объект находится внутри иерархии.
-        let local_delta = if let Some(parent) =
-            self.scene.world.get::<Parent>(operation.entity)
-        {
-            if let Some(parent_matrix) = self.scene.global_matrix(parent.0) {
-                parent_matrix.inverse().transform_vector3(world_delta)
-            } else {
-                world_delta
+        match operation.mode {
+            TransformMode::Translate => {
+                let units_per_pixel =
+                    2.0 * state.camera.distance
+                    * (state.camera.fovy * 0.5).tan()
+                    / self.viewport_size.y.max(1.0);
+                let world_delta_raw =
+                    state.camera.right() * delta.x * units_per_pixel
+                    - state.camera.up() * delta.y * units_per_pixel;
+                let world_delta = match operation.axis {
+                    Some(a) if a == Vec3::X => Vec3::new(world_delta_raw.x, 0.0, 0.0),
+                    Some(a) if a == Vec3::Y => Vec3::new(0.0, world_delta_raw.y, 0.0),
+                    Some(a) if a == Vec3::Z => Vec3::new(0.0, 0.0, world_delta_raw.z),
+                    _ => world_delta_raw,
+                };
+                let local_delta = if let Some(parent) = self.scene.world.get::<Parent>(operation.entity) {
+                    if let Some(parent_matrix) = self.scene.global_matrix(parent.0) {
+                        parent_matrix.inverse().transform_vector3(world_delta)
+                    } else { world_delta }
+                } else { world_delta };
+                if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
+                    transform.translation = operation.start_translation + local_delta;
+                }
             }
-        } else {
-            world_delta
-        };
-
-        if let Some(mut transform) =
-            self.scene.world.get_mut::<Transform>(operation.entity)
-        {
-            transform.translation = operation.start_translation + local_delta;
+            TransformMode::Rotate => {
+                let mut angle = if operation.axis.is_some() {
+                    delta.x * 0.01
+                } else {
+                    let start_vec = operation.start_mouse_screen - operation.pivot_screen;
+                    let cur_vec = mouse_pos - operation.pivot_screen;
+                    let mut a = cur_vec.y.atan2(cur_vec.x) - start_vec.y.atan2(start_vec.x);
+                    if a > PI { a -= 2.0 * PI; }
+                    if a < -PI { a += 2.0 * PI; }
+                    a
+                };
+                if self.snap.enabled {
+                    let step = 15.0_f32.to_radians();
+                    angle = (angle / step).round() * step;
+                }
+                let axis = operation.axis.unwrap_or_else(|| state.camera.forward()).normalize();
+                let new_rot = Quat::from_axis_angle(axis, angle) * operation.start_rotation;
+                if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
+                    transform.rotation = new_rot;
+                }
+            }
+            TransformMode::Scale => {
+                let factor = (1.0 + delta.x * 0.01).max(0.01);
+                let new_scale = match operation.axis {
+                    Some(a) if a == Vec3::X => Vec3::new(operation.start_scale.x * factor, operation.start_scale.y, operation.start_scale.z),
+                    Some(a) if a == Vec3::Y => Vec3::new(operation.start_scale.x, operation.start_scale.y * factor, operation.start_scale.z),
+                    Some(a) if a == Vec3::Z => Vec3::new(operation.start_scale.x, operation.start_scale.y, operation.start_scale.z * factor),
+                    _ => operation.start_scale * factor,
+                };
+                if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
+                    transform.scale = new_scale;
+                }
+            }
         }
     }
 
@@ -1038,14 +1020,7 @@ impl App {
                 self.edit_mode = EditMode::Object;
                 self.edit_mode_history_start = None;
                 self.selected_elements.clear();
-                update_edit_handles(
-                    self.state.as_mut().unwrap(),
-                    &mut self.scene,
-                    self.edit_mode,
-                    self.select_mode,
-                    self.selected,
-                    &mut self.edit_handles,
-                );
+                update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
                 if let Some(sel) = self.selected {
                     update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, sel, &[]);
                 }
@@ -1056,6 +1031,11 @@ impl App {
             self.history.pos -= 1;
             let snap = self.history.stack[self.history.pos].clone();
             self.restore_snapshot(snap);
+            self.selected = None;
+            self.selected_elements.clear();
+            self.edit_handles.clear();
+            self.drag = None;
+            self.transform_operation = None;
         }
     }
 
@@ -1064,6 +1044,11 @@ impl App {
             self.history.pos += 1;
             let snap = self.history.stack[self.history.pos].clone();
             self.restore_snapshot(snap);
+            self.selected = None;
+            self.selected_elements.clear();
+            self.edit_handles.clear();
+            self.drag = None;
+            self.transform_operation = None;
         }
     }
 
@@ -1088,61 +1073,36 @@ impl App {
         self.drag = None;
         self.editing_entity = None;
         self.selected_elements.clear();
-        update_edit_handles(
-            self.state.as_mut().unwrap(),
-            &mut self.scene,
-            self.edit_mode,
-            self.select_mode,
-            self.selected,
-            &mut self.edit_handles,
-        );
+        update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
     }
 
     fn frame_selected(&mut self) {
-        let Some(entity) = self.selected else {
-            return;
-        };
-
-        let Some(global_matrix) = self.scene.global_matrix(entity) else {
-            return;
-        };
-
+        let Some(entity) = self.selected else { return; };
+        let Some(global_matrix) = self.scene.global_matrix(entity) else { return; };
         let (center, radius) = {
             if let Some(mesh) = self.scene.world.get::<CustomMesh>(entity) {
                 if mesh.vertices.is_empty() {
-                    (
-                        global_matrix.transform_point3(Vec3::ZERO),
-                        0.5,
-                    )
+                    (global_matrix.transform_point3(Vec3::ZERO), 0.5)
                 } else {
                     let mut min = Vec3::splat(f32::INFINITY);
                     let mut max = Vec3::splat(f32::NEG_INFINITY);
-
                     for vertex in &mesh.vertices {
                         let world_pos = global_matrix.transform_point3(*vertex);
                         min = min.min(world_pos);
                         max = max.max(world_pos);
                     }
-
                     let center = (min + max) * 0.5;
-
                     let mut radius: f32 = 0.0;
-
                     for vertex in &mesh.vertices {
                         let world_pos = global_matrix.transform_point3(*vertex);
                         radius = radius.max(world_pos.distance(center));
                     }
-
                     (center, radius.max(0.5))
                 }
             } else {
-                (
-                    global_matrix.transform_point3(Vec3::ZERO),
-                    0.5,
-                )
+                (global_matrix.transform_point3(Vec3::ZERO), 0.5)
             }
         };
-
         let state = self.state.as_mut().unwrap();
         state.camera.frame_sphere(center, radius);
         state.update_camera();
@@ -1156,6 +1116,21 @@ impl App {
             UiAction::Redo => self.do_redo(),
             UiAction::SetMode(m) => self.transform_mode = m,
             UiAction::Save => { let _ = save_scene(&mut self.scene, SAVE_PATH); }
+            UiAction::LoadGcode => {
+                const GCODE_PATH: &str = "C:/project/cnc-simulator/test.nc";
+                match std::fs::read_to_string(GCODE_PATH) {
+                    Ok(source) => {
+                        let prog = engine_core::gcode::GCodeProgram::parse(&source);
+                        println!("G-code loaded: {} segments, {} errors", prog.segments.len(), prog.errors.len());
+                        for e in prog.errors.iter().take(5) { println!("  {}", e); }
+                        if let (Some(first), Some(last)) = (prog.segments.first(), prog.segments.last()) {
+                            println!("  from {:?} to {:?}", first.from, last.to);
+                        }
+                        self.gcode = prog;
+                    }
+                    Err(e) => eprintln!("Failed to read {}: {}", GCODE_PATH, e),
+                }
+            }
             UiAction::Load => {
                 if std::path::PathBuf::from(SAVE_PATH).exists() {
                     if let Ok((grid, cursor)) = load_scene(&mut self.scene, &mut self.render_map, state, SAVE_PATH) {
@@ -1166,14 +1141,7 @@ impl App {
                         self.editing_entity = None;
                         self.edit_mode = EditMode::Object;
                         self.selected_elements.clear();
-                        update_edit_handles(
-                            self.state.as_mut().unwrap(),
-                            &mut self.scene,
-                            self.edit_mode,
-                            self.select_mode,
-                            self.selected,
-                            &mut self.edit_handles,
-                        );
+                        update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
                         let snap = capture_snapshot(&mut self.scene);
                         self.history.record(snap);
                     }
@@ -1224,7 +1192,6 @@ impl App {
                         let cursor_pos = self.scene.global_matrix(cursor_e).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
                         let obj_pos = self.scene.global_matrix(sel).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
                         let delta = cursor_pos - obj_pos;
-                        
                         if let Some(p) = self.scene.world.get::<Parent>(sel) {
                             if let Some(pg) = self.scene.global_matrix(p.0) {
                                 let local_delta = pg.inverse().transform_vector3(delta);

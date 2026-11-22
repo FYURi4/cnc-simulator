@@ -3,6 +3,8 @@ pub mod name;
 pub mod scene;
 pub mod transform;
 
+pub mod gcode;
+
 pub use hierarchy::{Children, Parent};
 pub use name::Name;
 pub use scene::Scene;
