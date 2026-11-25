@@ -1,8 +1,8 @@
 {
   "roots": [
     {
-      "name": "Grid",
-      "mesh_kind": null,
+      "name": "3D Cursor",
+      "mesh_kind": "Cursor3D",
       "transform": {
         "translation": [
           0.0,
@@ -19,9 +19,122 @@
           1.0,
           1.0,
           1.0
+        ],
+        "pivot_offset": [
+          0.0,
+          0.0,
+          0.0
         ]
       },
+      "is_locked": false,
+      "custom_mesh": null,
       "children": []
+    },
+    {
+      "name": "Grid",
+      "mesh_kind": "Plane",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "pivot_offset": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "is_locked": true,
+      "custom_mesh": null,
+      "children": [
+        {
+          "name": "Cube",
+          "mesh_kind": "Cube",
+          "transform": {
+            "translation": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "pivot_offset": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "is_locked": false,
+          "custom_mesh": {
+            "vertices": [
+              [
+                -0.5,
+                -0.5,
+                0.5
+              ],
+              [
+                0.5,
+                -0.5,
+                0.5
+              ],
+              [
+                0.5,
+                0.5,
+                0.5
+              ],
+              [
+                -0.5,
+                0.5,
+                0.5
+              ],
+              [
+                0.5,
+                -0.5,
+                -0.5
+              ],
+              [
+                -0.5,
+                -0.5,
+                -0.5
+              ],
+              [
+                -0.5,
+                0.5,
+                -0.5
+              ],
+              [
+                0.5,
+                0.5,
+                -0.5
+              ]
+            ],
+            "deleted_faces": [],
+            "custom_faces": null
+          },
+          "children": []
+        }
+      ]
     }
   ]
 }

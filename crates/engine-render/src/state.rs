@@ -15,14 +15,24 @@ struct CameraUniform {
     view_proj: [[f32; 4]; 4],
     eye: [f32; 3],
     grid_extent: f32,
+    grid_color: [f32; 4],
+    grid_type: f32,
+    grid_visible: f32,
+    grid_step_x: f32,
+    grid_step_y: f32,
 }
 
 impl CameraUniform {
-    fn from_camera(cam: &Camera) -> Self {
+    fn from_camera(cam: &Camera, grid_color: [f32; 3], grid_type: f32, grid_visible: bool, grid_step_x: f32, grid_step_y: f32) -> Self {
         Self {
             view_proj: cam.view_proj().to_cols_array_2d(),
             eye: cam.position.into(),
             grid_extent: 50.0,
+            grid_color: [grid_color[0], grid_color[1], grid_color[2], 1.0],
+            grid_type,
+            grid_visible: if grid_visible { 1.0 } else { 0.0 },
+            grid_step_x,
+            grid_step_y,
         }
     }
 }
@@ -53,6 +63,11 @@ pub struct RenderObject {
 
 pub struct State {
     pub grid_extent: f32,
+    pub grid_color: [f32; 3],
+    pub grid_visible: bool,
+    pub grid_type: f32,
+    pub grid_step_x: f32,
+    pub grid_step_y: f32,
     pub surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -118,7 +133,7 @@ impl State {
 
         let depth_texture = DepthTexture::new(&device, &config)?;
         let camera = Camera::new(config.width as f32 / config.height as f32);
-        let camera_uniform = CameraUniform::from_camera(&camera);
+        let camera_uniform = CameraUniform::from_camera(&camera, [0.5, 0.5, 0.5], 0.0, true, 0.005, 0.005);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera_uniform"),
@@ -238,6 +253,11 @@ impl State {
             camera_buffer,
             camera_bind_group,
             grid_extent: 50.0,
+            grid_color: [0.5, 0.5, 0.5],
+            grid_visible: true,
+            grid_type: 0.0,
+            grid_step_x: 0.005,
+            grid_step_y: 0.005,
             objects: Vec::new(),
             window,
             egui_ctx,
@@ -348,7 +368,7 @@ impl State {
     }
 
     pub fn update_camera(&mut self) {
-        let mut uniform = CameraUniform::from_camera(&self.camera);
+        let mut uniform = CameraUniform::from_camera(&self.camera, self.grid_color, self.grid_type, self.grid_visible, self.grid_step_x, self.grid_step_y);
         uniform.grid_extent = self.grid_extent;
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));
     }

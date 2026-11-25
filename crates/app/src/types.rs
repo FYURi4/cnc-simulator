@@ -52,6 +52,21 @@ pub struct SnapSettings {
     pub increment: f32,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum GridType { Grid, Dots, DotsMajor, DotsOnly }
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum GridUnit { Mm, M }
+
+pub struct GridSettings {
+    pub visible: bool,
+    pub color: [f32; 4],
+    pub grid_type: GridType,
+    pub unit: GridUnit,
+    pub step_x: f32,
+    pub step_y: f32,
+}
+
 pub struct InputState {
     pub keys: HashSet<winit::keyboard::KeyCode>,
     pub last_frame: Instant,
@@ -117,8 +132,10 @@ pub struct TransformOperation {
 }
 
 pub enum UiAction {
-    None, Save, Load, AddCube, AddPlane, AddCylinder, AddSphere, AddPyramid, LoadGcode,
+    None, Save, SaveAs, Load, AddCube, AddPlane, AddCylinder, AddSphere, AddPyramid, LoadGcode,
     DeleteSelected, Undo, Redo, SetMode(TransformMode), SetOriginToCursor, SetOriginToGeometry,
+    ConfirmDelete, CancelDelete, CopySelected, PasteSelected,
+    SetOriginToCursorConfirmed,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

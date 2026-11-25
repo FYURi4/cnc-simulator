@@ -40,7 +40,7 @@ pub enum MeshKind {
 impl MeshKind {
     pub fn create(self, device: &wgpu::Device) -> Mesh {
         match self {
-            MeshKind::Cube => Mesh::cube(device, 1.0),
+            MeshKind::Cube => Mesh::cube(device, 0.01),
             MeshKind::Plane => Mesh::plane(device, 20.0),
             MeshKind::Cylinder => Mesh::cylinder(device),
             MeshKind::Sphere => Mesh::sphere_solid(device),
@@ -201,8 +201,8 @@ impl Mesh {
             for j in 0..segments {
                 let a = i * (segments + 1) + j;
                 let b = a + segments + 1;
-                indices.extend_from_slice(&[a as u16, b as u16, (a + 1) as u16]);
-                indices.extend_from_slice(&[b as u16, (b + 1) as u16, (a + 1) as u16]);
+                indices.extend_from_slice(&[a as u16, (a + 1) as u16, b as u16]);
+                indices.extend_from_slice(&[b as u16, (a + 1) as u16, (b + 1) as u16]);
             }
         }
 

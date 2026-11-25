@@ -1,7 +1,12 @@
 struct Camera {
     view_proj: mat4x4<f32>,
     eye: vec3<f32>,
-    grid_extent: f32,  
+    grid_extent: f32,
+    grid_color: vec4<f32>,
+    grid_type: f32,
+    grid_visible: f32,
+    grid_step_x: f32,
+    grid_step_y: f32,
 }
 struct Object {
     model: mat4x4<f32>,
@@ -37,40 +42,84 @@ fn vs_main(in: VsIn) -> VsOut {
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    let cell = 1.0;
-    let coord = in.world_pos.xz / cell;
-    let d = abs(fract(coord - 0.5) - 0.5) / fwidth(coord);
-    let minor = 1.0 - clamp(min(d.x, d.y), 0.0, 1.0);
+    if (camera.grid_visible < 0.5) {
+        discard;
+    }
+    let step_x = max(camera.grid_step_x, 0.001);
+    let step_y = max(camera.grid_step_y, 0.001);
+    
+    // Minor grid (step)
+    let coord_x = in.world_pos.x / step_x;
+    let coord_y = in.world_pos.z / step_y;
+    let d = min(
+        abs(fract(coord_x - 0.5) - 0.5) / fwidth(coord_x),
+        abs(fract(coord_y - 0.5) - 0.5) / fwidth(coord_y)
+    );
+    let minor = 1.0 - clamp(d, 0.0, 1.0);
 
-    let coord10 = in.world_pos.xz / (cell * 10.0);
-    let d10 = abs(fract(coord10 - 0.5) - 0.5) / fwidth(coord10);
-    let major = 1.0 - clamp(min(d10.x, d10.y), 0.0, 1.0);
+    // Major grid (15mm = 0.015m)
+    let major_step = 0.015;
+    let coord10_x = in.world_pos.x / major_step;
+    let coord10_y = in.world_pos.z / major_step;
+    let d10 = min(
+        abs(fract(coord10_x - 0.5) - 0.5) / fwidth(coord10_x),
+        abs(fract(coord10_y - 0.5) - 0.5) / fwidth(coord10_y)
+    );
+    let major = 1.0 - clamp(d10, 0.0, 1.0);
 
-    let minor_color = vec3<f32>(0.30, 0.30, 0.34);
-    let major_color = vec3<f32>(0.60, 0.60, 0.65);
-
-    var color = vec3<f32>(0.0);
+    var color = camera.grid_color.rgb * vec3<f32>(0.2);
     var alpha = 0.0;
 
-    if (minor > 0.0) {
-        color = mix(color, minor_color, minor);
-        alpha = max(alpha, minor * 0.8);
-    }
-    if (major > 0.0) {
-        color = mix(color, major_color, major);
-        alpha = max(alpha, major);
-    }
+    let is_grid = camera.grid_type < 0.5;
+    let is_dots = camera.grid_type > 0.5 && camera.grid_type < 1.5;
+    let is_dots_major = camera.grid_type > 1.5 && camera.grid_type < 2.5;
+    let is_dots_only = camera.grid_type > 2.5;
 
-    let axis_x = 1.0 - clamp(abs(in.world_pos.z) / (fwidth(in.world_pos.z) * 1.5), 0.0, 1.0);
-    let axis_z = 1.0 - clamp(abs(in.world_pos.x) / (fwidth(in.world_pos.x) * 1.5), 0.0, 1.0);
+    if (is_grid) {
+        // Full grid with lines
+        if (minor > 0.0) {
+            color = mix(color, camera.grid_color.rgb * vec3<f32>(0.6), minor);
+            alpha = max(alpha, minor * 0.8);
+        }
+        if (major > 0.0) {
+            color = mix(color, camera.grid_color.rgb, major);
+            alpha = max(alpha, major);
+        }
 
-    if (axis_x > 0.0) {
-        color = mix(color, vec3<f32>(0.90, 0.20, 0.20), axis_x);
-        alpha = max(alpha, axis_x);
-    }
-    if (axis_z > 0.0) {
-        color = mix(color, vec3<f32>(0.20, 0.45, 0.95), axis_z);
-        alpha = max(alpha, axis_z);
+        // Axis lines X (red) and Y (blue)
+        let axis_x = 1.0 - clamp(abs(in.world_pos.z) / (fwidth(in.world_pos.z) * 1.5), 0.0, 1.0);
+        let axis_z = 1.0 - clamp(abs(in.world_pos.x) / (fwidth(in.world_pos.x) * 1.5), 0.0, 1.0);
+
+        if (axis_x > 0.0) {
+            color = mix(color, camera.grid_color.rgb * vec3<f32>(1.5, 0.3, 0.3), axis_x);
+            alpha = max(alpha, axis_x);
+        }
+        if (axis_z > 0.0) {
+            color = mix(color, camera.grid_color.rgb * vec3<f32>(0.3, 0.6, 1.5), axis_z);
+            alpha = max(alpha, axis_z);
+        }
+    } else if (is_dots) {
+        // Dots: minor dots at step, major dots at 15mm
+        if (minor > 0.7) {
+            color = mix(color, camera.grid_color.rgb * vec3<f32>(0.6), minor);
+            alpha = max(alpha, minor * 0.6);
+        }
+        if (major > 0.7) {
+            color = mix(color, camera.grid_color.rgb, major);
+            alpha = max(alpha, major * 0.8);
+        }
+    } else if (is_dots_major) {
+        // Only major dots at 15mm
+        if (major > 0.7) {
+            color = mix(color, camera.grid_color.rgb, major);
+            alpha = max(alpha, major * 0.8);
+        }
+    } else if (is_dots_only) {
+        // Only major dots, no minor
+        if (major > 0.7) {
+            color = mix(color, camera.grid_color.rgb, major);
+            alpha = max(alpha, major * 0.9);
+        }
     }
 
     let dist = length(in.world_pos.xz);
@@ -83,5 +132,5 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         discard;
     }
 
-    return vec4<f32>(color * object.tint.rgb * in.color, alpha);
+    return vec4<f32>(color * in.color, alpha * camera.grid_color.a);
 }

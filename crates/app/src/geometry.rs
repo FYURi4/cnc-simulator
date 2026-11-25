@@ -260,7 +260,48 @@ pub fn get_faces(kind: MeshKind) -> Vec<Vec<usize>> {
             vec![2, 3, 4],
             vec![3, 0, 4],
         ]
-    } else { vec![] }
+    } else if kind == MeshKind::Cylinder {
+        // Cylinder vertex layout in mesh.rs:
+        // 0..127: side vertices (32 segs × 4 verts: bl, br, tr, tl)
+        // 128: center bottom, 129..160: bottom ring (32)
+        // 161: center top, 162..193: top ring (32)
+        let mut faces = Vec::new();
+        // Side faces - winding must match outward normals from build_mesh_vertices
+        for i in 0..32 {
+            let b0 = i * 4;
+            let b1 = b0 + 1;
+            let t1 = b0 + 2;
+            let t0 = b0 + 3;
+            faces.push(vec![b0, b1, t1, t0]);
+        }
+        // Bottom cap
+        let mut bottom = vec![128usize];
+        for i in (129..161).rev() { bottom.push(i); }
+        faces.push(bottom);
+        // Top cap
+        let mut top = vec![161usize];
+        for i in 162..194 { top.push(i); }
+        faces.push(top);
+        faces
+    } else if kind == MeshKind::Sphere {
+        // Sphere: segments=24, rings=16
+        // vertices[i][j] = ring i, segment j -> flat index = i*(segments+1) + j
+        let segments = 24usize;
+        let rings = 16usize;
+        let mut faces = Vec::new();
+        for i in 0..rings {
+            for j in 0..segments {
+                let a = i * (segments + 1) + j;
+                let b = a + 1;
+                let c = (i + 1) * (segments + 1) + j;
+                let d = c + 1;
+                faces.push(vec![a, b, d, c]);
+            }
+        }
+        faces
+    } else {
+        vec![]
+    }
 }
 
 pub fn get_handles_for_mode(mode: SelectMode, faces: &[Vec<usize>], edges: &[(usize, usize)], verts: &[Vec3]) -> Vec<Vec3> {
@@ -310,13 +351,37 @@ pub fn build_mesh_vertices(scene: &Scene, entity: Entity, kind: MeshKind, select
 
     let faces = get_current_faces(scene, entity, kind);
 
+    // Compute proper normals for cylinder side faces
+    let cylinder_side_normals: Vec<Vec3> = if kind == MeshKind::Cylinder && !verts.is_empty() {
+        let mut normals = Vec::new();
+        // Side vertices: 0..127 (32 segs × 4)
+        for i in 0..128 {
+            let v = verts[i];
+            // Horizontal normal from cylinder axis outward
+            normals.push(Vec3::new(-v.x, 0.0, -v.z).normalize());
+        }
+        // Bottom cap normal
+        normals.push(Vec3::NEG_Y);
+        for _ in 129..161 { normals.push(Vec3::NEG_Y); }
+        // Top cap normal
+        normals.push(Vec3::Y);
+        for _ in 162..194 { normals.push(Vec3::Y); }
+        normals
+    } else {
+        vec![]
+    };
+
     for face in faces {
         if face.len() < 3 { continue; }
         
         let v0 = verts[face[0]];
         let v1 = verts[face[1]];
         let v2 = verts[face[2]];
-        let normal = (v1 - v0).cross(v2 - v0).normalize();
+        let normal = if !cylinder_side_normals.is_empty() {
+            cylinder_side_normals[face[0]]
+        } else {
+            (v1 - v0).cross(v2 - v0).normalize()
+        };
 
         out.push(Vertex { position: v0.into(), normal: normal.into(), uv: [0.0, 1.0], color: get_color(face[0]) });
         out.push(Vertex { position: v1.into(), normal: normal.into(), uv: [1.0, 1.0], color: get_color(face[1]) });
@@ -324,10 +389,30 @@ pub fn build_mesh_vertices(scene: &Scene, entity: Entity, kind: MeshKind, select
 
         if face.len() > 3 {
             let v3 = verts[face[3]];
+            let n3 = if !cylinder_side_normals.is_empty() { cylinder_side_normals[face[3]] } else { normal };
             out.push(Vertex { position: v0.into(), normal: normal.into(), uv: [0.0, 1.0], color: get_color(face[0]) });
             out.push(Vertex { position: v2.into(), normal: normal.into(), uv: [1.0, 0.0], color: get_color(face[2]) });
-            out.push(Vertex { position: v3.into(), normal: normal.into(), uv: [0.0, 0.0], color: get_color(face[3]) });
+            out.push(Vertex { position: v3.into(), normal: n3.into(), uv: [0.0, 0.0], color: get_color(face[3]) });
         }
     }
     out
+}
+
+/// Вычисляет bounding box вершин кастомной меши
+pub fn compute_bounding_box(
+    _scene: &Scene,
+    _entity: Entity,
+    custom: &CustomMesh,
+) -> (Vec3, Vec3) {
+    let verts = &custom.vertices;
+    if verts.is_empty() {
+        return (Vec3::splat(-0.5), Vec3::splat(0.5));
+    }
+    let mut min = Vec3::splat(f32::INFINITY);
+    let mut max = Vec3::splat(f32::NEG_INFINITY);
+    for v in verts {
+        min = min.min(*v);
+        max = max.max(*v);
+    }
+    (min, max)
 }

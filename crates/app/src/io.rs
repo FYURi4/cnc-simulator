@@ -3,6 +3,7 @@ use bevy_ecs::prelude::*;
 use engine_core::{Children, Parent, Scene, Transform};
 use engine_render::mesh::{Mesh, MeshKind};
 use engine_render::state::{ObjectKind, State};
+use glam::Vec3;
 use std::path::PathBuf;
 use std::fs;
 use crate::types::*;
@@ -71,6 +72,33 @@ pub fn add_mesh_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, s
     e
 }
 
+pub fn paste_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, state: &mut State, node: &SavedNode, parent: Option<Entity>, offset: Vec3) -> Entity {
+    let mut t = node.transform;
+    t.translation += offset;
+    let e = scene.spawn(t);
+    scene.set_name(e, node.name.clone());
+    if node.is_locked { scene.world.entity_mut(e).insert(Locked); }
+    
+    let is_grid = node.name == "Grid";
+    let is_cursor = node.name == "3D Cursor";
+    let obj_kind = if is_grid { ObjectKind::Grid } else if is_cursor { ObjectKind::Gizmo } else { ObjectKind::Solid };
+    let kind_opt = if is_grid { Some(MeshKind::Plane) } else if is_cursor { Some(MeshKind::Cursor3D) } else { node.mesh_kind };
+
+    if let Some(kind) = kind_opt {
+        scene.world.entity_mut(e).insert(MeshKindComp(kind));
+        if let Some(cm) = &node.custom_mesh {
+            scene.world.entity_mut(e).insert(cm.clone());
+        }
+        let mesh = if is_grid { Mesh::plane(&state.device, 500.0) } else { kind.create(&state.device) };
+        let idx = state.add_object(mesh, obj_kind, Some(kind));
+        if is_cursor { state.set_object_tint(idx, [1.0, 0.2, 0.2, 1.0]); }
+        render_map.push((e, idx));
+    }
+    if let Some(p) = parent { scene.set_parent(e, p); }
+    for child in &node.children { paste_node(scene, render_map, state, child, Some(e), offset); }
+    e
+}
+
 pub fn despawn_all(scene: &mut Scene) {
     let mut all: Vec<Entity> = Vec::new();
     let mut q = scene.world.query::<Entity>();
@@ -84,6 +112,11 @@ pub fn capture_snapshot(scene: &mut Scene) -> SavedScene {
     for e in q.iter(&scene.world) { roots_entities.push(e); }
     let roots: Vec<SavedNode> = roots_entities.iter().map(|e| serialize_subtree(scene, *e)).collect();
     SavedScene { roots }
+}
+
+pub fn capture_selected(scene: &mut Scene, entity: Entity) -> SavedScene {
+    let root = serialize_subtree(scene, entity);
+    SavedScene { roots: vec![root] }
 }
 
 pub fn serialize_subtree(scene: &Scene, entity: Entity) -> SavedNode {
@@ -139,7 +172,8 @@ pub fn spawn_saved_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>
         if let Some(cm) = node.custom_mesh {
             scene.world.entity_mut(e).insert(cm);
         }
-        let mesh = kind.create(&state.device);
+        // Grid plane must be 500.0 to match initial creation; other meshes use default sizes
+        let mesh = if is_grid { Mesh::plane(&state.device, 500.0) } else { kind.create(&state.device) };
         let idx = state.add_object(mesh, obj_kind, Some(kind));
         if is_cursor { state.set_object_tint(idx, [1.0, 0.2, 0.2, 1.0]); }
         render_map.push((e, idx));

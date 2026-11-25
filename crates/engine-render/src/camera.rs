@@ -169,6 +169,16 @@ impl Camera {
         );
     }
 
+    pub fn set_view_direction(&mut self, dir: Vec3) {
+        self.position = self.target + dir.normalize() * self.distance;
+        let direction = (self.target - self.position).normalize();
+        self.yaw = direction.z.atan2(direction.x);
+        self.pitch = direction.y.asin().clamp(
+            -89.9_f32.to_radians(),
+            89.9_f32.to_radians(),
+        );
+    }
+
     pub fn reset(&mut self) {
         self.target = Vec3::ZERO;
         self.position = Vec3::new(6.0, 5.0, 6.0);
