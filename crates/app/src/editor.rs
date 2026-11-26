@@ -101,9 +101,17 @@ pub fn create_gizmo_objects(state: &mut State) -> GizmoHandles {
     }
 }
 
+fn gizmo_world_scale(state: &State, viewport_size: Vec2, world_pos: Vec3) -> f32 {
+    // The local gizmo arrow is 0.45 units long. Keep it around 85 screen pixels.
+    let distance = state.camera.position.distance(world_pos).max(1e-5);
+    let viewport_height = viewport_size.y.max(1.0);
+    let world_view_height = 2.0 * distance * (state.camera.fovy * 0.5).tan();
+    (world_view_height * 85.0 / viewport_height / 0.45).clamp(1e-5, 1e5)
+}
+
 pub fn update_gizmo_positions(
     state: &mut State, gizmo: Option<&GizmoHandles>, selected: Option<Entity>, 
-    selected_elements: &[Selection], edit_mode: EditMode, mode: TransformMode, scene: &Scene
+    selected_elements: &[Selection], edit_mode: EditMode, mode: TransformMode, scene: &Scene, viewport_size: Vec2
 ) {
     let Some(gizmo) = gizmo else { return };
     let hide = Mat4::from_scale(Vec3::ZERO);
@@ -119,21 +127,9 @@ pub fn update_gizmo_positions(
     
     let mut pos = scene.global_matrix(sel).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
     
-    // Compute proportional gizmo scale from bounding box
-    let gizmo_scale = if let Some(custom) = scene.world.get::<CustomMesh>(sel) {
-        if let Some(gt) = scene.global_matrix(sel) {
-            let mut min = Vec3::splat(f32::INFINITY);
-            let mut max = Vec3::splat(f32::NEG_INFINITY);
-            for v in &custom.vertices {
-                let wp = gt.transform_point3(*v);
-                min = min.min(wp);
-                max = max.max(wp);
-            }
-            let bbox_size = (max - min).length().max(0.001);
-            // Gizmo size ~30% of bounding box
-            bbox_size * 0.30
-        } else { 0.03 }
-    } else { 0.03 };
+    // Keep the manipulator screen-sized, independent of object bounds.
+    let gizmo_scale = gizmo_world_scale(state, viewport_size, pos);
+    
     
     if edit_mode == EditMode::Edit {
         if let Some(custom) = scene.world.get::<CustomMesh>(sel) {
@@ -220,9 +216,10 @@ pub fn handle_lmb_press(
             }
         }
 
+        let gizmo_scale = gizmo_world_scale(state, viewport_size, gizmo_pos);
         let axis_idx = match mode {
-            TransformMode::Rotate => pick_gizmo_ring(ray_o, ray_d, gizmo_pos),
-            _ => pick_gizmo(ray_o, ray_d, gizmo_pos),
+            TransformMode::Rotate => pick_gizmo_ring(ray_o, ray_d, gizmo_pos, gizmo_scale),
+            _ => pick_gizmo(ray_o, ray_d, gizmo_pos, gizmo_scale),
         };
         if let Some(idx) = axis_idx {
             let axis = match idx { 0 => Vec3::X, 1 => Vec3::Y, _ => Vec3::Z };
