@@ -160,9 +160,9 @@ pub fn update_gizmo_positions(
 
     match mode {
         TransformMode::Translate | TransformMode::Scale => {
-            state.set_object_transform(active.x, Mat4::from_rotation_translation(Quat::from_rotation_z(-PI / 2.0), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
-            state.set_object_transform(active.y, Mat4::from_rotation_translation(Quat::IDENTITY, pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
-            state.set_object_transform(active.z, Mat4::from_rotation_translation(Quat::from_rotation_x(PI / 2.0), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
+            state.set_object_transform(active.x, Mat4::from_rotation_translation(gizmo_axis_rotation(0), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
+            state.set_object_transform(active.y, Mat4::from_rotation_translation(gizmo_axis_rotation(1), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
+            state.set_object_transform(active.z, Mat4::from_rotation_translation(gizmo_axis_rotation(2), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
         }
         TransformMode::Rotate => {
             state.set_object_transform(active.x, Mat4::from_rotation_translation(Quat::from_rotation_y(-PI / 2.0), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
@@ -224,7 +224,12 @@ pub fn handle_lmb_press(
         if let Some(idx) = axis_idx {
             let axis = match idx { 0 => Vec3::X, 1 => Vec3::Y, _ => Vec3::Z };
             let pivot_screen = world_to_screen(&state.camera, viewport_size, gizmo_pos);
-            let screen_axis_dir = world_to_screen(&state.camera, viewport_size, gizmo_pos + axis) - pivot_screen;
+            let axis_world_length = gizmo_scale * 0.45;
+            let screen_axis_dir = world_to_screen(
+                &state.camera,
+                viewport_size,
+                gizmo_pos + axis * axis_world_length,
+            ) - pivot_screen;
             let transform = scene.world.get::<Transform>(sel).copied().unwrap_or_default();
 
             let mut selected_indices = HashSet::new();
@@ -238,7 +243,8 @@ pub fn handle_lmb_press(
 
             *drag = Some(DragState {
                 entity: sel, mode, axis, start_world_pos: gizmo_pos, start_mouse_screen: input.cursor_pos,
-                pivot_screen, screen_axis_dir, start_translation: transform.translation,
+                pivot_screen, screen_axis_dir, axis_world_length,
+                start_translation: transform.translation,
                 start_rotation: transform.rotation, start_scale: transform.scale,
                 start_custom_verts: scene.world.get::<CustomMesh>(sel).map(|c| c.vertices.clone()),
                 selected_indices: selected_indices.into_iter().collect(),
