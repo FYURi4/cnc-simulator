@@ -122,7 +122,7 @@ pub(crate) fn apply_numeric_transform(&mut self) {
         }
     }
 
-pub(super) fn begin_transform(&mut self, mode: TransformMode) {
+pub(crate) fn begin_transform(&mut self, mode: TransformMode) {
         if self.edit_mode != EditMode::Object {
             return;
         }
@@ -202,7 +202,7 @@ pub(super) fn begin_transform(&mut self, mode: TransformMode) {
         println!("Transform started: {:?}", mode);
     }
 
-pub(super) fn confirm_transform_if_changed(&mut self, label: &str) -> bool {
+pub(crate) fn confirm_transform_if_changed(&mut self, label: &str) -> bool {
         let Some(op) = self.transform_operation.take() else { return false; };
         let changed = if let Some(t) = self.scene.world.get::<Transform>(op.entity) {
             t.translation != op.start_translation
@@ -216,7 +216,7 @@ pub(super) fn confirm_transform_if_changed(&mut self, label: &str) -> bool {
         true
     }
 
-pub(super) fn cancel_transform(&mut self) -> bool {
+pub(crate) fn cancel_transform(&mut self) -> bool {
         let Some(op) = self.transform_operation.take() else { return false; };
         if let Some(mut t) = self.scene.world.get_mut::<Transform>(op.entity) {
             t.translation = op.start_translation;
