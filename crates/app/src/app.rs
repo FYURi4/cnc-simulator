@@ -21,6 +21,9 @@ use crate::editor::*;
 use crate::io::*;
 use crate::ui::*;
 
+mod camera;
+mod history;
+
 pub struct App {
     pub state: Option<State>,
     pub window: Option<Arc<Window>>,
@@ -1362,104 +1365,6 @@ ui.label("Scale X");
         fn update_camera(_input: &InputState, _state: &mut State, _dt: f32) {
         }
 
-
-        fn do_undo(&mut self) {
-            if let Some(start) = self.edit_mode_history_start {
-                if self.history.pos <= start {
-                    self.edit_mode = EditMode::Object;
-                    self.edit_mode_history_start = None;
-                    self.selected_elements.clear();
-                    update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
-                    if let Some(sel) = self.selected {
-                        update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, sel, &[]);
-                    }
-                    return;
-                }
-            }
-            if self.history.can_undo() {
-                self.history.pos -= 1;
-                let snap = self.history.stack[self.history.pos].clone();
-                self.restore_snapshot(snap);
-                self.selected = None;
-                self.selected_elements.clear();
-                self.edit_handles.clear();
-                self.drag = None;
-                self.transform_operation = None;
-            }
-        }
-
-        fn do_redo(&mut self) {
-            if self.history.can_redo() {
-                self.history.pos += 1;
-                let snap = self.history.stack[self.history.pos].clone();
-                self.restore_snapshot(snap);
-                self.selected = None;
-                self.selected_elements.clear();
-                self.edit_handles.clear();
-                self.drag = None;
-                self.transform_operation = None;
-            }
-        }
-
-        fn restore_snapshot(&mut self, snap: SavedScene) {
-            let state = self.state.as_mut().unwrap();
-            for (_, idx) in &self.render_map { state.set_object_transform(*idx, Mat4::from_scale(Vec3::ZERO)); }
-            self.render_map.clear();
-            despawn_all(&mut self.scene);
-
-            let mut new_grid = None;
-            let mut new_cursor = None;
-            for node in snap.roots {
-                let is_grid = node.name == "Grid";
-                let is_cursor = node.name == "3D Cursor";
-                let e = spawn_saved_node(&mut self.scene, &mut self.render_map, state, node, None);
-                if is_grid { new_grid = Some(e); }
-                if is_cursor { new_cursor = Some(e); }
-            }
-            self.grid_entity = new_grid;
-            self.cursor_entity = new_cursor;
-            self.selected = None;
-            self.drag = None;
-            self.editing_entity = None;
-            self.selected_elements.clear();
-            update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
-            self.state.as_mut().unwrap().update_camera();
-        }
-
-        fn frame_selected(&mut self) {
-            let (center, radius) = if let Some(entity) = self.selected {
-                let Some(global_matrix) = self.scene.global_matrix(entity) else { return; };
-                if let Some(mesh) = self.scene.world.get::<CustomMesh>(entity) {
-                    if mesh.vertices.is_empty() {
-                        (global_matrix.transform_point3(Vec3::ZERO), 0.05)
-                    } else {
-                        let mut min = Vec3::splat(f32::INFINITY);
-                        let mut max = Vec3::splat(f32::NEG_INFINITY);
-                        for vertex in &mesh.vertices {
-                            let world_pos = global_matrix.transform_point3(*vertex);
-                            min = min.min(world_pos);
-                            max = max.max(world_pos);
-                        }
-                        let center = (min + max) * 0.5;
-                        let mut radius: f32 = 0.0;
-                        for vertex in &mesh.vertices {
-                            let world_pos = global_matrix.transform_point3(*vertex);
-                            radius = radius.max(world_pos.distance(center));
-                        }
-                        (center, radius.max(0.001))
-                    }
-                } else {
-                    (global_matrix.transform_point3(Vec3::ZERO), 0.05)
-                }
-            } else {
-                // Frame the grid (1m plane)
-                let grid_radius = 0.75; // 750mm to fit the 1m plane
-                (Vec3::ZERO, grid_radius)
-            };
-            let state = self.state.as_mut().unwrap();
-            state.camera.frame_sphere(center, radius);
-            state.update_camera();
-        }
 
         fn apply_ui_action(&mut self, action: UiAction) {
             let Some(state) = self.state.as_mut() else { return };
