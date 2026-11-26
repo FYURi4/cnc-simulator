@@ -6,6 +6,8 @@ use crate::app::App;
 mod scene;
 mod top_bar;
 mod tools_panel;
+mod numeric_overlay;
+mod dialogs;
 use crate::editor::*;
 use crate::io::capture_snapshot;
 use crate::types::*;
@@ -65,22 +67,7 @@ impl App {
                             GridUnit::M => 0.00002,
                         };
 
-                        if let Some((mode_label, axis_label, value)) = &numeric_overlay {
-                            egui::Area::new(egui::Id::new("numeric_transform_input"))
-                                .order(egui::Order::Foreground)
-                                .fixed_pos(egui::pos2(
-                                    (self.viewport_size.x * 0.5 - 110.0).max(8.0),
-                                    (self.viewport_size.y - 76.0).max(8.0),
-                                ))
-                                .show(ctx, |ui| {
-                                    egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.label(egui::RichText::new(format!("{} · {}", mode_label, axis_label)).strong());
-                                            ui.monospace(if value.is_empty() { "Enter value" } else { value.as_str() });
-                                        });
-                                    });
-                                });
-                        }
+                        self.draw_numeric_overlay(ctx, numeric_overlay.as_ref());
 
                         self.draw_top_bar(ctx, &mut ui_action, &mut grid_extent_ui, &mut ui_view, snap);
 
@@ -301,111 +288,7 @@ ui.label("Scale X");
                                 });
                             });
 
-                        if let (Some(start), Some(end)) = (drag_start, drag_end) {
-                            let rect = egui::Rect::from_two_pos(
-                                egui::pos2(start.x, start.y),
-                                egui::pos2(end.x, end.y),
-                            );
-                            egui::Area::new(egui::Id::new("box_select"))
-                                .fixed_pos(rect.min)
-                                .show(ctx, |ui| {
-                                    let painter = ui.painter();
-                                    let r = egui::Rect::from_min_size(egui::Pos2::ZERO, rect.size());
-                                    painter.rect_filled(r, 0.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 50));
-                                    painter.rect_stroke(r, 0.0, egui::Stroke::new(1.0_f32, egui::Color32::WHITE), egui::StrokeKind::Outside);
-                                });
-                        }
-
-                        if self.delete_confirm {
-                            let dialog_pos = egui::pos2(
-                                (self.delete_confirm_pos.x + 15.0).clamp(0.0, ctx.viewport_rect().max.x - 200.0),
-                                (self.delete_confirm_pos.y + 15.0).clamp(0.0, ctx.viewport_rect().max.y - 80.0),
-                            );
-                            egui::Area::new(egui::Id::new("delete_confirm"))
-                                .fixed_pos(dialog_pos)
-                                .show(ctx, |ui| {
-                                    let layout = egui::Layout::centered_and_justified(egui::Direction::LeftToRight);
-                                    ui.allocate_ui_with_layout(egui::Vec2::ZERO, layout, |ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.label("Удалить объект?");
-                                            if ui.button("Да").clicked() {
-                                                ui_action = UiAction::ConfirmDelete;
-                                                self.delete_confirm = false;
-                                                ui.close();
-                                            }
-                                            if ui.button("Нет").clicked() {
-                                                self.delete_confirm = false;
-                                                ui.close();
-                                            }
-                                        });
-                                    });
-                                });
-                        }
-
-                        if self.show_save_as {
-                            egui::Window::new("Save As")
-                                .default_size([320.0, 100.0])
-                                .show(ctx, |ui| {
-                                    ui.label("File path:");
-                                    ui.text_edit_singleline(&mut self.save_as_path);
-                                    ui.separator();
-                                    ui.horizontal(|ui| {
-                                        if ui.button("Save").clicked() {
-                                            ui_action = UiAction::SaveAs;
-                                            self.show_save_as = false;
-                                        }
-                                        if ui.button("Cancel").clicked() {
-                                            self.show_save_as = false;
-                                        }
-                                    });
-                                });
-                        }
-
-                        if self.show_color_picker {
-                            egui::Window::new("Grid Color")
-                                .default_size([220.0, 160.0])
-                                .show(ctx, |ui| {
-                                    let c = &mut self.grid_settings.color;
-                                    let mut rgb = [
-                                        (c[0] * 255.0) as u8,
-                                        (c[1] * 255.0) as u8,
-                                        (c[2] * 255.0) as u8,
-                                    ];
-                                    if ui.color_edit_button_srgb(&mut rgb).changed() {
-                                        c[0] = rgb[0] as f32 / 255.0;
-                                        c[1] = rgb[1] as f32 / 255.0;
-                                        c[2] = rgb[2] as f32 / 255.0;
-                                        self.color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
-                                    }
-                                    ui.separator();
-                                    ui.horizontal(|ui| {
-                                        ui.label("HEX:");
-                                        let resp = ui.add(egui::TextEdit::singleline(&mut self.color_picker_hex)
-                                            .font(egui::FontId::monospace(12.0)));
-                                        if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                            let hex = self.color_picker_hex.trim().trim_start_matches('#');
-                                            if hex.len() == 6 {
-                                                if let Ok(val) = u32::from_str_radix(hex, 16) {
-                                                    let r = ((val >> 16) & 0xFF) as f32 / 255.0;
-                                                    let g = ((val >> 8) & 0xFF) as f32 / 255.0;
-                                                    let b = (val & 0xFF) as f32 / 255.0;
-                                                    c[0] = r;
-                                                    c[1] = g;
-                                                    c[2] = b;
-                                                    rgb[0] = (r * 255.0) as u8;
-                                                    rgb[1] = (g * 255.0) as u8;
-                                                    rgb[2] = (b * 255.0) as u8;
-                                                }
-                                            }
-                                        }
-                                    });
-                                    ui.separator();
-                                    if ui.button("OK").clicked() {
-                                        self.show_color_picker = false;
-                                        self.color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
-                                    }
-                                });
-                        }
+                        self.draw_dialogs(ctx, drag_start, drag_end, &mut ui_action);
                     });
 
                     let gs = &mut self.grid_settings;
