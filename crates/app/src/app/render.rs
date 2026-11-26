@@ -38,6 +38,14 @@ impl App {
                     let drag_end = self.drag_end;
                     let selected_elements = self.selected_elements.clone();
                     let render_map_clone = self.render_map.clone();
+                    let viewport_size = self.viewport_size;
+                    let grid_settings = &mut self.grid_settings;
+                    let show_save_as = &mut self.show_save_as;
+                    let show_color_picker = &mut self.show_color_picker;
+                    let color_picker_hex = &mut self.color_picker_hex;
+                    let save_as_path = &mut self.save_as_path;
+                    let delete_confirm = &mut self.delete_confirm;
+                    let delete_confirm_pos = self.delete_confirm_pos;
                     let numeric_overlay = self.transform_operation.as_ref().map(|op| {
                         let axis = match op.axis {
                             Some(a) if a == Vec3::X => "X",
@@ -54,7 +62,7 @@ impl App {
                     // FIX: флаг "было ли изменение через numeric input".
                     // Ставится внутри closure, применяется после.
                     let mut pending_history_record = false;
-                    let grid_unit = self.grid_settings.unit;
+                    let grid_unit = grid_settings.unit;
 
                     let result = state.render_with_ui(|ctx| {
                         let unit = grid_unit;
@@ -69,9 +77,9 @@ impl App {
                             GridUnit::M => 0.00002,
                         };
 
-                        self.draw_numeric_overlay(ctx, numeric_overlay.as_ref());
+                        Self::draw_numeric_overlay(ctx, viewport_size, numeric_overlay.as_ref());
 
-                        self.draw_top_bar(ctx, &mut ui_action, &mut grid_extent_ui, &mut ui_view, snap);
+                        Self::draw_top_bar(ctx, &mut ui_action, &mut grid_extent_ui, &mut ui_view, snap, grid_settings, show_save_as, show_color_picker, color_picker_hex, selected);
 
                         Self::draw_tools_panel(ctx, edit_m, mode, sel_m, sel_tool, &mut ui_action, &mut ui_sel_m, &mut ui_sel_tool);
 
@@ -84,7 +92,7 @@ impl App {
                                 Self::draw_properties_panel(ui, &mut scene, selected, edit_m, &selected_elements, drag_speed, &format_val, &mut pending_history_record, &mut ui_action, &render_map_clone, &mut pending_vertex_update, cursor_e);
                             });
 
-                        self.draw_dialogs(ctx, drag_start, drag_end, &mut ui_action);
+                        Self::draw_dialogs(ctx, drag_start, drag_end, &mut ui_action, delete_confirm, delete_confirm_pos, show_save_as, save_as_path, show_color_picker, color_picker_hex, &mut grid_settings.color);
                     });
 
                     let gs = &mut self.grid_settings;
