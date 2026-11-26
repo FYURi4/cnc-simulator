@@ -4,7 +4,7 @@ use crate::app::App;
 use crate::types::UiAction;
 
 impl App {
-    pub(super) fn draw_dialogs(&mut self, ctx: &egui::Context, drag_start: Option<Vec2>, drag_end: Option<Vec2>, ui_action: &mut UiAction) {
+    pub(super) fn draw_dialogs(ctx: &egui::Context, drag_start: Option<Vec2>, drag_end: Option<Vec2>, ui_action: &mut UiAction, delete_confirm: &mut bool, delete_confirm_pos: Vec2, show_save_as: &mut bool, save_as_path: &mut String, show_color_picker: &mut bool, color_picker_hex: &mut String, grid_color: &mut [f32; 4]) {
         if let (Some(start), Some(end)) = (drag_start, drag_end) {
                             let rect = egui::Rect::from_two_pos(
                                 egui::pos2(start.x, start.y),
@@ -20,9 +20,9 @@ impl App {
                                 });
                         }
 
-                        if self.delete_confirm {
+                        if *delete_confirm {
                             let dialog_pos = egui::pos2(
-                                (self.delete_confirm_pos.x + 15.0).clamp(0.0, ctx.viewport_rect().max.x - 200.0),
+                                (delete_confirm_pos.x + 15.0).clamp(0.0, ctx.viewport_rect().max.x - 200.0),
                                 (self.delete_confirm_pos.y + 15.0).clamp(0.0, ctx.viewport_rect().max.y - 80.0),
                             );
                             egui::Area::new(egui::Id::new("delete_confirm"))
@@ -46,12 +46,12 @@ impl App {
                                 });
                         }
 
-                        if self.show_save_as {
+                        if *show_save_as {
                             egui::Window::new("Save As")
                                 .default_size([320.0, 100.0])
                                 .show(ctx, |ui| {
                                     ui.label("File path:");
-                                    ui.text_edit_singleline(&mut self.save_as_path);
+                                    ui.text_edit_singleline(save_as_path);
                                     ui.separator();
                                     ui.horizontal(|ui| {
                                         if ui.button("Save").clicked() {
@@ -65,11 +65,11 @@ impl App {
                                 });
                         }
 
-                        if self.show_color_picker {
+                        if *show_color_picker {
                             egui::Window::new("Grid Color")
                                 .default_size([220.0, 160.0])
                                 .show(ctx, |ui| {
-                                    let c = &mut self.grid_settings.color;
+                                    let c = grid_color;
                                     let mut rgb = [
                                         (c[0] * 255.0) as u8,
                                         (c[1] * 255.0) as u8,
@@ -79,7 +79,7 @@ impl App {
                                         c[0] = rgb[0] as f32 / 255.0;
                                         c[1] = rgb[1] as f32 / 255.0;
                                         c[2] = rgb[2] as f32 / 255.0;
-                                        self.color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
+                                        *color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
                                     }
                                     ui.separator();
                                     ui.horizontal(|ui| {
