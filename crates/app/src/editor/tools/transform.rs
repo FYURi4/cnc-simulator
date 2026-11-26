@@ -1,8 +1,8 @@
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec2, Vec3};
 use engine_core::{Parent, Transform};
-use crate::geometry::world_to_screen;
+use crate::geometry::*;
 use crate::io::capture_snapshot;
-use crate::types::{EditMode, TransformMode, TransformOperation};
+use crate::types::*;
 use crate::app::App;
 
 impl App {
@@ -226,4 +226,97 @@ pub(super) fn cancel_transform(&mut self) -> bool {
         println!("Transform cancelled");
         true
     }
+pub(crate) fn update_transform_operation(&mut self, mouse_pos: Vec2) {
+            let Some(operation) = self.transform_operation.clone() else { return; };
+            let Some(state) = self.state.as_ref() else { return; };
+            let delta = mouse_pos - operation.start_mouse_screen;
+            if !operation.numeric_input.is_empty() {
+                return;
+            }
+
+            match operation.mode {
+                TransformMode::Translate => {
+                    let units_per_pixel =
+                        2.0 * state.camera.distance
+                        * (state.camera.fovy * 0.5).tan()
+                        / self.viewport_size.y.max(1.0);
+                    let world_delta = if let Some(axis) = operation.axis {
+                        let probe_length = (state.camera.position.distance(operation.pivot_world) * 0.1)
+                            .max(1e-5);
+                        let axis_screen = world_to_screen(
+                            &state.camera,
+                            self.viewport_size,
+                            operation.pivot_world + axis * probe_length,
+                        ) - operation.pivot_screen;
+                        let axis_screen_len_sq = axis_screen.length_squared();
+                        if axis_screen_len_sq > 1e-6 {
+                            axis * (delta.dot(axis_screen) / axis_screen_len_sq * probe_length)
+                        } else {
+                            Vec3::ZERO
+                        }
+                    } else {
+                        state.camera.right() * delta.x * units_per_pixel
+                            - state.camera.up() * delta.y * units_per_pixel
+                    };
+                    let local_delta = if let Some(parent) = self.scene.world.get::<Parent>(operation.entity) {
+                        if let Some(parent_matrix) = self.scene.global_matrix(parent.0) {
+                            parent_matrix.inverse().transform_vector3(world_delta)
+                        } else { world_delta }
+                    } else { world_delta };
+                    if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
+                        transform.translation = operation.start_translation + local_delta;
+                    }
+                }
+                TransformMode::Rotate => {
+                    let mut angle = if operation.axis.is_some() {
+                        delta.x * 0.01
+                    } else {
+                        let start_vec = operation.start_mouse_screen - operation.pivot_screen;
+                        let cur_vec = mouse_pos - operation.pivot_screen;
+                        let mut a = cur_vec.y.atan2(cur_vec.x) - start_vec.y.atan2(start_vec.x);
+                        if a > PI { a -= 2.0 * PI; }
+                        if a < -PI { a += 2.0 * PI; }
+                        a
+                    };
+                    if self.snap.enabled {
+                        let step = 15.0_f32.to_radians();
+                        angle = (angle / step).round() * step;
+                    }
+                    let axis = operation.axis.unwrap_or_else(|| state.camera.forward()).normalize();
+                    let new_rot = Quat::from_axis_angle(axis, angle) * operation.start_rotation;
+                    if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
+                        transform.rotation = new_rot;
+                    }
+                }
+                TransformMode::Scale => {
+                    let scale_delta = if let Some(axis) = operation.axis {
+                        let probe_length = (state.camera.position.distance(operation.pivot_world) * 0.1)
+                            .max(1e-5);
+                        let axis_screen = world_to_screen(
+                            &state.camera,
+                            self.viewport_size,
+                            operation.pivot_world + axis * probe_length,
+                        ) - operation.pivot_screen;
+                        let axis_screen_len_sq = axis_screen.length_squared();
+                        if axis_screen_len_sq > 1e-6 {
+                            delta.dot(axis_screen) / axis_screen_len_sq * probe_length
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        delta.x * 0.01
+                    };
+                    let factor = (1.0 + scale_delta).max(0.01);
+                    let new_scale = match operation.axis {
+                        Some(a) if a == Vec3::X => Vec3::new(operation.start_scale.x * factor, operation.start_scale.y, operation.start_scale.z),
+                        Some(a) if a == Vec3::Y => Vec3::new(operation.start_scale.x, operation.start_scale.y * factor, operation.start_scale.z),
+                        Some(a) if a == Vec3::Z => Vec3::new(operation.start_scale.x, operation.start_scale.y, operation.start_scale.z * factor),
+                        _ => operation.start_scale * factor,
+                    };
+                    if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
+                        transform.scale = new_scale;
+                    }
+                }
+            }
+        }
 }
