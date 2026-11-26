@@ -127,9 +127,6 @@ pub fn update_gizmo_positions(
     
     let mut pos = scene.global_matrix(sel).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
     
-    // Keep the manipulator screen-sized, independent of object bounds.
-    let gizmo_scale = gizmo_world_scale(state, viewport_size, pos);
-    
     
     if edit_mode == EditMode::Edit {
         if let Some(custom) = scene.world.get::<CustomMesh>(sel) {
@@ -151,6 +148,9 @@ pub fn update_gizmo_positions(
             }
         }
     }
+
+    // Calculate scale after edit-mode selection has adjusted the gizmo pivot.
+    let gizmo_scale = gizmo_world_scale(state, viewport_size, pos);
 
     let active = match mode {
         TransformMode::Translate => &gizmo.translate,
