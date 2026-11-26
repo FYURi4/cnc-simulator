@@ -87,7 +87,7 @@ impl App {
                                         let resp = ui.add(egui::TextEdit::singleline(color_picker_hex)
                                             .font(egui::FontId::monospace(12.0)));
                                         if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                            let hex = *color_picker_hex.trim().trim_start_matches('#');
+                                            let hex = color_picker_hex.trim().trim_start_matches('#');
                                             if hex.len() == 6 {
                                                 if let Ok(val) = u32::from_str_radix(hex, 16) {
                                                     let r = ((val >> 16) & 0xFF) as f32 / 255.0;
