@@ -1,4 +1,4 @@
-use glam::{Mat4, Vec2, Vec3};
+use glam::Vec3;
 use bevy_ecs::prelude::*;
 use engine_core::Scene;
 use engine_render::mesh::Vertex;
