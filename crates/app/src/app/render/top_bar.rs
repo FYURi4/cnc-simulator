@@ -3,12 +3,12 @@ use crate::app::{App, ViewDirection};
 use crate::types::{GridUnit, GridType, SnapTarget, SnapSettings, UiAction};
 
 impl App {
-    pub(super) fn draw_top_bar(&mut self, ctx: &egui::Context, ui_action: &mut UiAction, grid_extent_ui: &mut f32, ui_view: &mut ViewDirection, snap: &mut SnapSettings) {
+    pub(super) fn draw_top_bar(ctx: &egui::Context, ui_action: &mut UiAction, grid_extent_ui: &mut f32, ui_view: &mut ViewDirection, snap: &mut SnapSettings, grid_settings: &mut GridSettings, show_save_as: &mut bool, show_color_picker: &mut bool, color_picker_hex: &mut String, selected: Option<bevy_ecs::prelude::Entity>) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
                             egui::MenuBar::new().ui(ui, |ui| {
                                 ui.menu_button("File", |ui| {
                                     if ui.button("💾 Save").clicked() { *ui_action = UiAction::Save; ui.close(); }
-                                    if ui.button("💾 Save As...").clicked() { self.show_save_as = true; ui.close(); }
+                                    if ui.button("💾 Save As...").clicked() { *show_save_as = true; ui.close(); }
                                     if ui.button("📂 Load").clicked() { *ui_action = UiAction::Load; ui.close(); }
                                     if ui.button("⚙ Load G-code").clicked() { *ui_action = UiAction::LoadGcode; ui.close(); }
                                 });
@@ -29,10 +29,10 @@ impl App {
                                 ui.menu_button("Space", |ui| {
                                     ui.heading("Grid Settings");
                                     ui.separator();
-                                    ui.checkbox(&mut self.grid_settings.visible, "Visible");
+                                    ui.checkbox(&mut grid_settings.visible, "Visible");
                                     ui.add(egui::Slider::new(grid_extent_ui, 10.0..=500.0).logarithmic(true).text("Size"));
-                                    let grid_mm = (grid_extent_ui * 1000.0).round() as i32;
-                                    let grid_m = grid_extent_ui / 1000.0;
+                                    let grid_mm = (*grid_extent_ui * 1000.0).round() as i32;
+                                    let grid_m = *grid_extent_ui / 1000.0;
                                     ui.horizontal(|ui| {
                                         ui.label("Unit:");
                                         ui.selectable_value(&mut self.grid_settings.unit, GridUnit::Mm, "mm");
@@ -56,9 +56,9 @@ impl App {
                                     ui.label("Color:");
                                     let c = &mut self.grid_settings.color;
                                     if ui.button("🎨").clicked() {
-                                        self.show_color_picker = !self.show_color_picker;
+                                        *show_color_picker = !self.show_color_picker;
                                         if self.show_color_picker {
-                                            self.color_picker_hex = format!("{:02X}{:02X}{:02X}",
+                                            *color_picker_hex = format!("{:02X}{:02X}{:02X}",
                                                 (c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8);
                                         }
                                     }
@@ -83,7 +83,7 @@ impl App {
                                             ui.selectable_value(ui_view, ViewDirection::Right, "Right (X+)");
                                             ui.selectable_value(ui_view, ViewDirection::Iso, "Iso");
                                         });
-                                    if self.selected.is_some() {
+                                    if selected.is_some() {
                                         if ui.button("📍 Set Origin").clicked() { *ui_action = UiAction::SetOriginToCursorConfirmed; ui.close(); }
                                     }
                                 });
