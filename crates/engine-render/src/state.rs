@@ -133,7 +133,7 @@ impl State {
 
         let depth_texture = DepthTexture::new(&device, &config)?;
         let camera = Camera::new(config.width as f32 / config.height as f32);
-        let camera_uniform = CameraUniform::from_camera(&camera, [0.5, 0.5, 0.5], 0.0, true, 0.005, 0.005);
+        let camera_uniform = CameraUniform::from_camera(&camera, [0.5, 0.5, 0.5], 0.0, true, 0.001, 0.001);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera_uniform"),
@@ -256,8 +256,8 @@ impl State {
             grid_color: [0.5, 0.5, 0.5],
             grid_visible: true,
             grid_type: 0.0,
-            grid_step_x: 0.005,
-            grid_step_y: 0.005,
+            grid_step_x: 0.001, // 1mm
+            grid_step_y: 0.001, // 1mm
             objects: Vec::new(),
             window,
             egui_ctx,

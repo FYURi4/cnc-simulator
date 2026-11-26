@@ -27,8 +27,8 @@ pub fn apply_snap(pos: Vec3, start_pos: Vec3, axis: Vec3, snap: &SnapSettings, s
                 
                 if let Some(gt) = scene.global_matrix(*e) {
                     let (amin, amax) = match objects[*idx].mesh_kind {
-                        Some(MeshKind::Plane) => (Vec3::new(-10.0, -0.1, -10.0), Vec3::new(10.0, 0.1, 10.0)),
-                        _ => (Vec3::splat(-0.5), Vec3::splat(0.5))
+                        Some(MeshKind::Plane) => (Vec3::new(-0.5, -0.1, -0.5), Vec3::new(0.5, 0.1, 0.5)),
+                        _ => (Vec3::splat(-0.05), Vec3::splat(0.05))
                     };
                     
                     let mut corners = Vec::new();
@@ -138,7 +138,7 @@ pub fn pick_object(scene: &Scene, render_map: &[(Entity, usize)], objects: &[Ren
                 let inv = gt.inverse();
                 let lo = inv.transform_point3(ray_o);
                 let ld = inv.transform_vector3(ray_d);
-                if let Some(t) = ray_aabb(lo, ld, Vec3::splat(-0.5), Vec3::splat(0.5)) {
+                if let Some(t) = ray_aabb(lo, ld, Vec3::splat(-0.05), Vec3::splat(0.05)) {
                     let world_hit = gt.transform_point3(lo + ld * t);
                     let dist = (world_hit - ray_o).length();
                     if best.map_or(true, |(_, d)| dist < d) { best = Some((*entity, dist)); }
@@ -148,7 +148,7 @@ pub fn pick_object(scene: &Scene, render_map: &[(Entity, usize)], objects: &[Ren
             let inv = gt.inverse();
             let lo = inv.transform_point3(ray_o);
             let ld = inv.transform_vector3(ray_d);
-            if let Some(t) = ray_aabb(lo, ld, Vec3::splat(-0.5), Vec3::splat(0.5)) {
+            if let Some(t) = ray_aabb(lo, ld, Vec3::splat(-0.05), Vec3::splat(0.05)) {
                 let world_hit = gt.transform_point3(lo + ld * t);
                 let dist = (world_hit - ray_o).length();
                 if best.map_or(true, |(_, d)| dist < d) { best = Some((*entity, dist)); }
@@ -396,23 +396,4 @@ pub fn build_mesh_vertices(scene: &Scene, entity: Entity, kind: MeshKind, select
         }
     }
     out
-}
-
-/// Вычисляет bounding box вершин кастомной меши
-pub fn compute_bounding_box(
-    _scene: &Scene,
-    _entity: Entity,
-    custom: &CustomMesh,
-) -> (Vec3, Vec3) {
-    let verts = &custom.vertices;
-    if verts.is_empty() {
-        return (Vec3::splat(-0.5), Vec3::splat(0.5));
-    }
-    let mut min = Vec3::splat(f32::INFINITY);
-    let mut max = Vec3::splat(f32::NEG_INFINITY);
-    for v in verts {
-        min = min.min(*v);
-        max = max.max(*v);
-    }
-    (min, max)
 }

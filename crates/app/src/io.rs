@@ -4,11 +4,8 @@ use engine_core::{Children, Parent, Scene, Transform};
 use engine_render::mesh::{Mesh, MeshKind};
 use engine_render::state::{ObjectKind, State};
 use glam::Vec3;
-use std::path::PathBuf;
 use std::fs;
 use crate::types::*;
-use crate::geometry::*;
-use crate::editor::collect_subtree;
 
 pub fn add_mesh_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, state: &mut State, mesh_kind: MeshKind, parent: Option<Entity>) -> Entity {
     let t = Transform::default();
@@ -17,26 +14,39 @@ pub fn add_mesh_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, s
     scene.world.entity_mut(e).insert(MeshKindComp(mesh_kind));
     
     let verts = match mesh_kind {
-        MeshKind::Cube => vec![
-            glam::Vec3::new(-0.5, -0.5, 0.5), glam::Vec3::new(0.5, -0.5, 0.5), glam::Vec3::new(0.5, 0.5, 0.5), glam::Vec3::new(-0.5, 0.5, 0.5),
-            glam::Vec3::new(0.5, -0.5, -0.5), glam::Vec3::new(-0.5, -0.5, -0.5), glam::Vec3::new(-0.5, 0.5, -0.5), glam::Vec3::new(0.5, 0.5, -0.5),
-        ],
-        MeshKind::Plane => vec![
-            glam::Vec3::new(-10.0, 0.0, 10.0), glam::Vec3::new(10.0, 0.0, 10.0), glam::Vec3::new(10.0, 0.0, -10.0), glam::Vec3::new(-10.0, 0.0, -10.0),
-        ],
-        MeshKind::Pyramid => vec![
-            glam::Vec3::new(-0.5, 0.0, 0.5), glam::Vec3::new(0.5, 0.0, 0.5), glam::Vec3::new(0.5, 0.0, -0.5), glam::Vec3::new(-0.5, 0.0, -0.5),
-            glam::Vec3::new(0.0, 1.0, 0.0),
-        ],
+        // 100mm = 0.1m (width/depth), height = 100mm = 0.1m
+        MeshKind::Cube => {
+            let h = 0.05; // 50mm half-extent
+            vec![
+                glam::Vec3::new(-h, -h, h), glam::Vec3::new(h, -h, h), glam::Vec3::new(h, h, h), glam::Vec3::new(-h, h, h),
+                glam::Vec3::new(h, -h, -h), glam::Vec3::new(-h, -h, -h), glam::Vec3::new(-h, h, -h), glam::Vec3::new(h, h, -h),
+            ]
+        },
+        // 1000mm = 1m plane
+        MeshKind::Plane => {
+            let h = 0.5; // 500mm half-extent = 1000mm plane
+            vec![
+                glam::Vec3::new(-h, 0.0, h), glam::Vec3::new(h, 0.0, h), glam::Vec3::new(h, 0.0, -h), glam::Vec3::new(-h, 0.0, -h),
+            ]
+        },
+        MeshKind::Pyramid => {
+            let h = 0.05; // 100mm base
+            vec![
+                glam::Vec3::new(-h, 0.0, h), glam::Vec3::new(h, 0.0, h), glam::Vec3::new(h, 0.0, -h), glam::Vec3::new(-h, 0.0, -h),
+                glam::Vec3::new(0.0, 0.1, 0.0), // height 100mm
+            ]
+        },
         MeshKind::Cylinder => {
-            let mut verts = vec![glam::Vec3::new(0.0, 0.0, 0.0), glam::Vec3::new(0.0, 1.0, 0.0)];
+            let mut verts = vec![glam::Vec3::new(0.0, 0.0, 0.0), glam::Vec3::new(0.0, 0.1, 0.0)];
+            let radius = 0.05; // 50mm radius = 100mm diameter
+            let height = 0.1;  // 100mm height
             for i in 0..32 {
                 let a = (i as f32 / 32.0) * std::f32::consts::TAU;
-                verts.push(glam::Vec3::new(0.5 * a.cos(), 0.0, 0.5 * a.sin()));
+                verts.push(glam::Vec3::new(radius * a.cos(), 0.0, radius * a.sin()));
             }
             for i in 0..32 {
                 let a = (i as f32 / 32.0) * std::f32::consts::TAU;
-                verts.push(glam::Vec3::new(0.5 * a.cos(), 1.0, 0.5 * a.sin()));
+                verts.push(glam::Vec3::new(radius * a.cos(), height, radius * a.sin()));
             }
             verts
         },
@@ -44,7 +54,7 @@ pub fn add_mesh_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, s
             let mut verts = Vec::new();
             let segments = 24;
             let rings = 16;
-            let radius = 0.5;
+            let radius = 0.05; // 50mm radius = 100mm diameter
             for i in 0..=rings {
                 let v = i as f32 / rings as f32;
                 let phi = v * std::f32::consts::PI;
@@ -89,7 +99,7 @@ pub fn paste_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, stat
         if let Some(cm) = &node.custom_mesh {
             scene.world.entity_mut(e).insert(cm.clone());
         }
-        let mesh = if is_grid { Mesh::plane(&state.device, 500.0) } else { kind.create(&state.device) };
+        let mesh = if is_grid { Mesh::plane(&state.device, 1.0) } else { kind.create(&state.device) };
         let idx = state.add_object(mesh, obj_kind, Some(kind));
         if is_cursor { state.set_object_tint(idx, [1.0, 0.2, 0.2, 1.0]); }
         render_map.push((e, idx));
@@ -172,8 +182,8 @@ pub fn spawn_saved_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>
         if let Some(cm) = node.custom_mesh {
             scene.world.entity_mut(e).insert(cm);
         }
-        // Grid plane must be 500.0 to match initial creation; other meshes use default sizes
-        let mesh = if is_grid { Mesh::plane(&state.device, 500.0) } else { kind.create(&state.device) };
+        // Grid plane must be 1.0 (1000mm) to match initial creation; other meshes use default sizes
+        let mesh = if is_grid { Mesh::plane(&state.device, 1.0) } else { kind.create(&state.device) };
         let idx = state.add_object(mesh, obj_kind, Some(kind));
         if is_cursor { state.set_object_tint(idx, [1.0, 0.2, 0.2, 1.0]); }
         render_map.push((e, idx));
@@ -188,7 +198,8 @@ pub fn build_default_scene(state: &mut State, scene: &mut Scene, render_map: &mu
     scene.world.entity_mut(plane_e).insert(Locked);
     scene.set_name(plane_e, "Grid");
     scene.world.entity_mut(plane_e).insert(MeshKindComp(MeshKind::Plane));
-    let plane_idx = state.add_object(Mesh::plane(&state.device, 500.0), ObjectKind::Grid, Some(MeshKind::Plane));
+    // 1000mm = 1m plane
+    let plane_idx = state.add_object(Mesh::plane(&state.device, 1.0), ObjectKind::Grid, Some(MeshKind::Plane));
     render_map.push((plane_e, plane_idx));
 
     let cursor_e = scene.spawn(Transform::default());
@@ -202,24 +213,20 @@ pub fn build_default_scene(state: &mut State, scene: &mut Scene, render_map: &mu
     scene.set_name(cube_e, "Cube");
     scene.world.entity_mut(cube_e).insert(MeshKindComp(MeshKind::Cube));
     
-    let verts = vec![
-        glam::Vec3::new(-0.5, -0.5, 0.5), glam::Vec3::new(0.5, -0.5, 0.5), glam::Vec3::new(0.5, 0.5, 0.5), glam::Vec3::new(-0.5, 0.5, 0.5),
-        glam::Vec3::new(0.5, -0.5, -0.5), glam::Vec3::new(-0.5, -0.5, -0.5), glam::Vec3::new(-0.5, 0.5, -0.5), glam::Vec3::new(0.5, 0.5, -0.5),
-    ];
+    let verts = {
+        let h = 0.05; // 50mm half-extent = 100mm cube
+        vec![
+            glam::Vec3::new(-h, -h, h), glam::Vec3::new(h, -h, h), glam::Vec3::new(h, h, h), glam::Vec3::new(-h, h, h),
+            glam::Vec3::new(h, -h, -h), glam::Vec3::new(-h, -h, -h), glam::Vec3::new(-h, h, -h), glam::Vec3::new(h, h, -h),
+        ]
+    };
     scene.world.entity_mut(cube_e).insert(CustomMesh { vertices: verts, deleted_faces: std::collections::HashSet::new(), custom_faces: None });
 
     scene.set_parent(cube_e, plane_e);
-    let cube_idx = state.add_object(Mesh::cube(&state.device, 1.0), ObjectKind::Solid, Some(MeshKind::Cube));
+    let cube_idx = state.add_object(Mesh::cube(&state.device, 0.1), ObjectKind::Solid, Some(MeshKind::Cube));
     render_map.push((cube_e, cube_idx));
     
     crate::editor::update_object_mesh(state, scene, render_map, cube_e, &[]);
 
     (plane_e, cursor_e)
-}
-
-use engine_core::gcode::GCodeProgram;
-
-pub fn load_gcode_program(path: &str) -> Result<GCodeProgram> {
-    let source = fs::read_to_string(path)?;
-    Ok(GCodeProgram::parse(&source))
 }

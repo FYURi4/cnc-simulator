@@ -2,10 +2,12 @@ use std::collections::HashSet;
 use glam::{Mat4, Quat, Vec2, Vec3};
 use bevy_ecs::prelude::*;
 use engine_core::{Children, Parent, Scene, Transform};
-use engine_render::mesh::{Mesh, MeshKind};
+use engine_render::mesh::Mesh;
 use engine_render::state::{ObjectKind, State};
 use crate::types::*;
 use crate::geometry::*;
+
+pub mod tools;
 
 pub fn update_edit_handles(
     state: &mut State,
@@ -117,6 +119,22 @@ pub fn update_gizmo_positions(
     
     let mut pos = scene.global_matrix(sel).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
     
+    // Compute proportional gizmo scale from bounding box
+    let gizmo_scale = if let Some(custom) = scene.world.get::<CustomMesh>(sel) {
+        if let Some(gt) = scene.global_matrix(sel) {
+            let mut min = Vec3::splat(f32::INFINITY);
+            let mut max = Vec3::splat(f32::NEG_INFINITY);
+            for v in &custom.vertices {
+                let wp = gt.transform_point3(*v);
+                min = min.min(wp);
+                max = max.max(wp);
+            }
+            let bbox_size = (max - min).length().max(0.001);
+            // Gizmo size ~30% of bounding box
+            bbox_size * 0.30
+        } else { 0.03 }
+    } else { 0.03 };
+    
     if edit_mode == EditMode::Edit {
         if let Some(custom) = scene.world.get::<CustomMesh>(sel) {
             if let Some(gt) = scene.global_matrix(sel) {
@@ -146,14 +164,14 @@ pub fn update_gizmo_positions(
 
     match mode {
         TransformMode::Translate | TransformMode::Scale => {
-            state.set_object_transform(active.x, Mat4::from_rotation_translation(Quat::from_rotation_z(-PI / 2.0), pos));
-            state.set_object_transform(active.y, Mat4::from_rotation_translation(Quat::IDENTITY, pos));
-            state.set_object_transform(active.z, Mat4::from_rotation_translation(Quat::from_rotation_x(PI / 2.0), pos));
+            state.set_object_transform(active.x, Mat4::from_rotation_translation(Quat::from_rotation_z(-PI / 2.0), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
+            state.set_object_transform(active.y, Mat4::from_rotation_translation(Quat::IDENTITY, pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
+            state.set_object_transform(active.z, Mat4::from_rotation_translation(Quat::from_rotation_x(PI / 2.0), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
         }
         TransformMode::Rotate => {
-            state.set_object_transform(active.x, Mat4::from_rotation_translation(Quat::from_rotation_y(-PI / 2.0), pos));
-            state.set_object_transform(active.y, Mat4::from_rotation_translation(Quat::from_rotation_x(-PI / 2.0), pos));
-            state.set_object_transform(active.z, Mat4::from_rotation_translation(Quat::IDENTITY, pos));
+            state.set_object_transform(active.x, Mat4::from_rotation_translation(Quat::from_rotation_y(-PI / 2.0), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
+            state.set_object_transform(active.y, Mat4::from_rotation_translation(Quat::from_rotation_x(-PI / 2.0), pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
+            state.set_object_transform(active.z, Mat4::from_rotation_translation(Quat::IDENTITY, pos) * Mat4::from_scale(Vec3::splat(gizmo_scale)));
         }
     }
 }

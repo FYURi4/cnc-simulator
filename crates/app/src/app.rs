@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use std::time::Instant;
 use anyhow::Result;
+use crate::editor::tools::numeric_input;
 use bevy_ecs::prelude::*;
 use glam::{Mat4, Quat, Vec2, Vec3};
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
-    event_loop::{ActiveEventLoop, EventLoop},
+    event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
@@ -99,7 +100,7 @@ impl App {
             grid_entity: None, cursor_entity: None, transform_mode: TransformMode::Translate,
             edit_mode: EditMode::Object, select_mode: SelectMode::Face, selected_elements: Vec::new(), edit_handles: Vec::new(),
             snap: SnapSettings { enabled: false, target: SnapTarget::Increment, increment: 0.5 },
-            grid_settings: GridSettings { visible: true, color: [0.5, 0.5, 0.5, 1.0], grid_type: GridType::Grid, unit: GridUnit::Mm, step_x: 5.0, step_y: 5.0 },
+            grid_settings: GridSettings { visible: true, color: [0.5, 0.5, 0.5, 1.0], grid_type: GridType::Grid, unit: GridUnit::Mm, step_x: 1.0, step_y: 1.0 },
             gcode: engine_core::gcode::GCodeProgram::default(),
             history: History::new(),
             select_tool: SelectTool::Click,
@@ -120,29 +121,200 @@ impl App {
         }
     }
 
+    fn apply_numeric_transform(&mut self) {
+        let Some(op) = self.transform_operation.clone() else {
+            return;
+        };
+
+        let Some(value) = op.numeric_value else {
+            // Незавершённое или очищенное число:
+            // возвращаем исходную трансформацию.
+            if let Some(mut t) =
+                self.scene.world.get_mut::<Transform>(op.entity)
+            {
+                t.translation = op.start_translation;
+                t.rotation = op.start_rotation;
+                t.scale = op.start_scale;
+            }
+            return;
+        };
+
+        if !value.is_finite() {
+            return;
+        }
+
+        match op.mode {
+            TransformMode::Translate => {
+                let axis = op.axis.unwrap_or(Vec3::X);
+                let world_delta = axis * value;
+
+                let local_delta =
+                    if let Some(parent) =
+                        self.scene.world.get::<Parent>(op.entity)
+                    {
+                        if let Some(parent_matrix) =
+                            self.scene.global_matrix(parent.0)
+                        {
+                            parent_matrix
+                                .inverse()
+                                .transform_vector3(world_delta)
+                        } else {
+                            world_delta
+                        }
+                    } else {
+                        world_delta
+                    };
+
+                if let Some(mut t) =
+                    self.scene.world.get_mut::<Transform>(op.entity)
+                {
+                    t.translation = op.start_translation + local_delta;
+                }
+            }
+
+            TransformMode::Rotate => {
+                let axis = op.axis.unwrap_or_else(|| {
+                    self.state
+                        .as_ref()
+                        .map(|s| s.camera.forward())
+                        .unwrap_or(Vec3::Z)
+                }).normalize();
+
+                // Пользователь вводит градусы.
+                // Quat получает радианы.
+                let angle_rad = value.to_radians();
+
+                let rotation =
+                    Quat::from_axis_angle(axis, angle_rad)
+                        * op.start_rotation;
+
+                if let Some(mut t) =
+                    self.scene.world.get_mut::<Transform>(op.entity)
+                {
+                    t.rotation = rotation;
+                }
+            }
+
+            TransformMode::Scale => {
+                if value <= 0.0 {
+                    return;
+                }
+
+                let scale = match op.axis {
+                    Some(axis) if axis == Vec3::X => {
+                        Vec3::new(
+                            op.start_scale.x * value,
+                            op.start_scale.y,
+                            op.start_scale.z,
+                        )
+                    }
+
+                    Some(axis) if axis == Vec3::Y => {
+                        Vec3::new(
+                            op.start_scale.x,
+                            op.start_scale.y * value,
+                            op.start_scale.z,
+                        )
+                    }
+
+                    Some(axis) if axis == Vec3::Z => {
+                        Vec3::new(
+                            op.start_scale.x,
+                            op.start_scale.y,
+                            op.start_scale.z * value,
+                        )
+                    }
+
+                    _ => op.start_scale * value,
+                };
+
+                if let Some(mut t) =
+                    self.scene.world.get_mut::<Transform>(op.entity)
+                {
+                    t.scale = scale;
+                }
+            }
+        }
+    }
+
     fn begin_transform(&mut self, mode: TransformMode) {
-        if self.edit_mode != EditMode::Object { return; }
-        let Some(entity) = self.selected else { return; };
-        let Some(transform) = self.scene.world.get::<Transform>(entity).cloned() else { return; };
-        let camera = &self.state.as_ref().unwrap().camera;
-        let Some(global_matrix) = self.scene.global_matrix(entity) else { return; };
+        if self.edit_mode != EditMode::Object {
+            return;
+        }
+
+        let Some(entity) = self.selected else {
+            return;
+        };
+
+        let (start_translation, start_rotation, start_scale) =
+            if let Some(active) = self.transform_operation.clone() {
+                if active.mode == mode && active.entity == entity {
+                    // Повторная клавиша сбрасывает текущий ввод.
+                    if let Some(mut t) =
+                        self.scene.world.get_mut::<Transform>(entity)
+                    {
+                        t.translation = active.start_translation;
+                        t.rotation = active.start_rotation;
+                        t.scale = active.start_scale;
+                    }
+
+                    (
+                        active.start_translation,
+                        active.start_rotation,
+                        active.start_scale,
+                    )
+                } else {
+                    // При переключении инструмента фиксируем предыдущий.
+                    self.confirm_transform_if_changed("Mode switch");
+
+                    let Some(t) =
+                        self.scene.world.get::<Transform>(entity)
+                    else {
+                        return;
+                    };
+
+                    (t.translation, t.rotation, t.scale)
+                }
+            } else {
+                let Some(t) =
+                    self.scene.world.get::<Transform>(entity)
+                else {
+                    return;
+                };
+
+                (t.translation, t.rotation, t.scale)
+            };
+
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+
+        let Some(global_matrix) = self.scene.global_matrix(entity) else {
+            return;
+        };
+
         let pivot_world = global_matrix.transform_point3(Vec3::ZERO);
-        let pivot_screen = world_to_screen(camera, self.viewport_size, pivot_world);
+        let pivot_screen =
+            world_to_screen(&state.camera, self.viewport_size, pivot_world);
 
         self.transform_operation = Some(TransformOperation {
-            entity, mode, axis: None,
-            start_translation: transform.translation,
-            start_rotation: transform.rotation,
-            start_scale: transform.scale,
+            entity,
+            mode,
+            axis: None,
+
+            start_translation,
+            start_rotation,
+            start_scale,
+
             start_mouse_screen: self.input.cursor_pos,
             pivot_screen,
-            screen_axis_dir: Vec2::ZERO,
+
             numeric_input: String::new(),
             numeric_value: None,
         });
+
         println!("Transform started: {:?}", mode);
     }
-
     /// FIX: общий хелпер для подтверждения G/R/S с записью в историю.
     /// Возвращает true, если трансформация была активна и была отменена/подтверждена.
     fn confirm_transform_if_changed(&mut self, label: &str) -> bool {
@@ -324,19 +496,48 @@ impl ApplicationHandler for App {
                 if let PhysicalKey::Code(code) = event.physical_key {
                     match event.state {
                         ElementState::Pressed => {
-                            let ctrl = self.input.keys.contains(&KeyCode::ControlLeft) || self.input.keys.contains(&KeyCode::ControlRight);
-                            match code {
+                            let ctrl = self.input.keys.contains(&KeyCode::ControlLeft)
+                                || self.input.keys.contains(&KeyCode::ControlRight);
+
+                            let numeric_handled =
+                                if self.transform_operation.is_some() && !ctrl {
+                                    if let Some(op) = self.transform_operation.as_mut() {
+                                        if numeric_input::handle_key(
+                                            &mut op.numeric_input,
+                                            code,
+                                        ) {
+                                            op.numeric_value =
+                                                numeric_input::parse(&op.numeric_input);
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                };
+
+                            if numeric_handled {
+                                self.apply_numeric_transform();
+                            } else {
+                                match code {
                                 KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ
                                     if self.transform_operation.is_some() && !ctrl =>
                                 {
                                     let axis = match code {
                                         KeyCode::KeyX => Vec3::X,
                                         KeyCode::KeyY => Vec3::Y,
-                                        _             => Vec3::Z,
+                                        KeyCode::KeyZ => Vec3::Z,
+                                        _ => unreachable!(),
                                     };
+
                                     if let Some(op) = self.transform_operation.as_mut() {
-                                        op.axis = if op.axis == Some(axis) { None } else { Some(axis) };
+                                        op.axis = Some(axis);
                                     }
+
+                                    self.apply_numeric_transform();
                                 }
                                 KeyCode::Enter | KeyCode::NumpadEnter => {
                                     // FIX: записываем историю при подтверждении G/R/S
@@ -569,1017 +770,965 @@ impl ApplicationHandler for App {
                                     self.transform_operation = None;
                                 },
                                 _ => {}
-                            }
+                            }}
                             self.input.keys.insert(code);
                         }
                         ElementState::Released => { self.input.keys.remove(&code); }
                     }
                 }
-            }
-            WindowEvent::MouseInput { state: btn_state, button, .. } => {
-                match button {
-                    MouseButton::Left => {
-                        if btn_state == ElementState::Pressed {
-                            self.input.lmb_down = true;
-                            self.drag_moved = false;
-
-                            if self.edit_mode == EditMode::Edit && self.select_tool == SelectTool::Box {
-                                self.drag_start = Some(self.input.cursor_pos);
-                                self.drag_end = Some(self.input.cursor_pos);
-                            } else {
-                                // FIX: LMB подтверждает G/R/S с записью истории
-                                if self.confirm_transform_if_changed("LMB") {
-                                    return;
-                                }
-                                handle_lmb_press(
-                                    self.state.as_mut().unwrap(), &self.input, self.viewport_size,
-                                    &mut self.selected, &mut self.selected_elements, &mut self.drag,
-                                    self.transform_mode, self.edit_mode, self.select_mode, &mut self.scene, &self.render_map,
-                                    self.cursor_entity,
-                                );
-                            }
-                        } else {
-                            self.input.lmb_down = false;
-                            if let Some(start) = self.drag_start.take() {
-                                if let Some(end) = self.drag_end.take() {
-                                    let min_x = start.x.min(end.x);
-                                    let max_x = start.x.max(end.x);
-                                    let min_y = start.y.min(end.y);
-                                    let max_y = start.y.max(end.y);
-                                    let ctrl = self.input.keys.contains(&KeyCode::ControlLeft) || self.input.keys.contains(&KeyCode::ShiftLeft);
-                                    if !ctrl { self.selected_elements.clear(); }
-                                    if let Some(sel) = self.selected {
-                                        if let Some(custom) = self.scene.world.get::<CustomMesh>(sel) {
-                                            if let Some(gt) = self.scene.global_matrix(sel) {
-                                                let kind = self.scene.world.get::<MeshKindComp>(sel).unwrap().0;
-                                                let faces = get_current_faces(&self.scene, sel, kind);
-                                                let edges = get_current_edges(&faces);
-                                                match self.select_mode {
-                                                    SelectMode::Vertex => {
-                                                        for (i, &v) in custom.vertices.iter().enumerate() {
-                                                            let world_v = gt.transform_point3(v);
-                                                            let screen_v = world_to_screen(&self.state.as_ref().unwrap().camera, self.viewport_size, world_v);
-                                                            if screen_v.x >= min_x && screen_v.x <= max_x && screen_v.y >= min_y && screen_v.y <= max_y {
-                                                                self.selected_elements.push(Selection::Vertex(i));
-                                                            }
-                                                        }
-                                                    }
-                                                    SelectMode::Edge => {
-                                                        for (a, b) in edges {
-                                                            let va = gt.transform_point3(custom.vertices[a]);
-                                                            let vb = gt.transform_point3(custom.vertices[b]);
-                                                            let mid = (va + vb) * 0.5;
-                                                            let screen_mid = world_to_screen(&self.state.as_ref().unwrap().camera, self.viewport_size, mid);
-                                                            if screen_mid.x >= min_x && screen_mid.x <= max_x && screen_mid.y >= min_y && screen_mid.y <= max_y {
-                                                                self.selected_elements.push(Selection::Edge(a, b));
-                                                            }
-                                                        }
-                                                    }
-                                                    SelectMode::Face => {
-                                                        for face in faces {
-                                                            let mut center = Vec3::ZERO;
-                                                            for &i in &face { center += custom.vertices[i]; }
-                                                            center /= face.len() as f32;
-                                                            let world_center = gt.transform_point3(center);
-                                                            let screen_center = world_to_screen(&self.state.as_ref().unwrap().camera, self.viewport_size, world_center);
-                                                            if screen_center.x >= min_x && screen_center.x <= max_x && screen_center.y >= min_y && screen_center.y <= max_y {
-                                                                self.selected_elements.push(Selection::Face(face));
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, sel, &self.selected_elements);
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                if self.drag_moved && self.drag.is_some() {
-                                    let snap = capture_snapshot(&mut self.scene);
-                                    self.history.record(snap);
-                                }
-                                self.drag = None;
+                }
+                WindowEvent::MouseInput { state: btn_state, button, .. } => {
+                    match button {
+                        MouseButton::Left => {
+                            if btn_state == ElementState::Pressed {
+                                self.input.lmb_down = true;
                                 self.drag_moved = false;
-                            }
-                        }
-                    }
-                    MouseButton::Right => {
-                        self.cancel_transform();
-                        self.input.rmb_down = btn_state == ElementState::Pressed;
-                    }
 
-                    MouseButton::Middle => {
-                        self.input.mmb_down = btn_state == ElementState::Pressed;
-                    }
-                    _ => {}
-                }
-            }
-            WindowEvent::MouseWheel { delta, .. } => {
-                let scroll = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(position) => position.y as f32 / 100.0,
-                };
-                let state = self.state.as_mut().unwrap();
-                state.camera.zoom(scroll);
-                state.update_camera();
-            }
-
-            WindowEvent::RedrawRequested => {
-                let dt = Self::frame_dt(&mut self.input);
-                {
-                    let state = self.state.as_mut().unwrap();
-                    Self::update_camera(&self.input, state, dt);
-                }
-
-                self.scene.update();
-
-                {
-                    let state = self.state.as_mut().unwrap();
-                    for (entity, idx) in &self.render_map {
-                        if let Some(mat) = self.scene.global_matrix(*entity) {
-                            state.set_object_transform(*idx, mat);
-                        }
-                    }
-                    if self.edit_mode == EditMode::Edit {
-                        if let Some(sel) = self.selected {
-                            if let Some(custom) = self.scene.world.get::<CustomMesh>(sel) {
-                                if let Some(gt) = self.scene.global_matrix(sel) {
-                                    let kind = self.scene.world.get::<MeshKindComp>(sel).unwrap().0;
-                                    let faces = get_current_faces(&self.scene, sel, kind);
-                                    let edges = get_current_edges(&faces);
-                                    let handles = get_handles_for_mode(self.select_mode, &faces, &edges, &custom.vertices);
-                                    for (i, &local_pos) in handles.iter().enumerate() {
-                                        if i < self.edit_handles.len() {
-                                            let world = gt.transform_point3(local_pos);
-                                            state.set_object_transform(self.edit_handles[i], Mat4::from_translation(world) * Mat4::from_scale(Vec3::splat(0.05)));
-                                            let is_selected = self.selected_elements.iter().any(|s| match s {
-                                                Selection::Vertex(idx) => self.select_mode == SelectMode::Vertex && *idx == i,
-                                                Selection::Edge(a, b) => {
-                                                    if self.select_mode == SelectMode::Edge { edges.get(i) == Some(&(*a, *b)) } else { false }
-                                                },
-                                                Selection::Face(face_indices) => {
-                                                    if self.select_mode == SelectMode::Face { faces.get(i) == Some(face_indices) } else { false }
-                                                }
-                                            });
-                                            if is_selected {
-                                                state.set_object_tint(self.edit_handles[i], [1.0, 0.5, 0.0, 1.0]);
-                                            } else {
-                                                state.set_object_tint(self.edit_handles[i], [0.0, 1.0, 1.0, 1.0]);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                update_gizmo_positions(self.state.as_mut().unwrap(), self.gizmo.as_ref(), self.selected, &self.selected_elements, self.edit_mode, self.transform_mode, &self.scene);
-
-                let mut ui_action = UiAction::None;
-                let mut scene = std::mem::replace(&mut self.scene, Scene::new());
-                let selected = self.selected;
-                let mut editing = self.editing_entity;
-                let mut new_selection = None;
-                let mode = self.transform_mode;
-                let edit_m = self.edit_mode;
-                let sel_m = self.select_mode;
-                let sel_tool = self.select_tool;
-                let can_undo = self.history.can_undo();
-                let can_redo = self.history.can_redo();
-                let cursor_e = self.cursor_entity;
-                let snap = &mut self.snap;
-                let mut ui_sel_m = self.select_mode;
-                let mut ui_sel_tool = self.select_tool;
-                let mut ui_view = self.current_view;
-                let drag_start = self.drag_start;
-                let drag_end = self.drag_end;
-                let selected_elements = self.selected_elements.clone();
-                let render_map_clone = self.render_map.clone();
-                let state = self.state.as_mut().unwrap();
-                let mut pending_vertex_update: Option<(Entity, Vec<Vertex>)> = None;
-                let mut grid_extent_ui = state.grid_extent;
-
-                // FIX: флаг "было ли изменение через numeric input".
-                // Ставится внутри closure, применяется после.
-                let mut pending_history_record = false;
-                let grid_unit = self.grid_settings.unit;
-                let viewport_size = self.viewport_size;
-                let cam_view_proj = state.camera.view_proj();
-
-                let result = state.render_with_ui(|ctx| {
-                    let unit = grid_unit;
-                    let format_val = |v: f32| -> String {
-                        match unit {
-                            GridUnit::Mm => format!("{} mm", (v * 1000.0) as i32),
-                            GridUnit::M => format!("{:.3} m", v),
-                        }
-                    };
-                    let drag_speed = match unit {
-                        GridUnit::Mm => 0.02,
-                        GridUnit::M => 0.00002,
-                    };
-
-                    egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-                        egui::MenuBar::new().ui(ui, |ui| {
-                            ui.menu_button("File", |ui| {
-                                if ui.button("💾 Save").clicked() { ui_action = UiAction::Save; ui.close(); }
-                                if ui.button("💾 Save As...").clicked() { self.show_save_as = true; ui.close(); }
-                                if ui.button("📂 Load").clicked() { ui_action = UiAction::Load; ui.close(); }
-                                if ui.button("⚙ Load G-code").clicked() { ui_action = UiAction::LoadGcode; ui.close(); }
-                            });
-                            ui.menu_button("Add", |ui| {
-                                if ui.button("Cube").clicked() { ui_action = UiAction::AddCube; ui.close(); }
-                                if ui.button("Plane").clicked() { ui_action = UiAction::AddPlane; ui.close(); }
-                                if ui.button("Cylinder").clicked() { ui_action = UiAction::AddCylinder; ui.close(); }
-                                if ui.button("Sphere").clicked() { ui_action = UiAction::AddSphere; ui.close(); }
-                                if ui.button("Pyramid").clicked() { ui_action = UiAction::AddPyramid; ui.close(); }
-                            });
-                            ui.menu_button("Edit", |ui| {
-                                if ui.button("Undo (Ctrl+Z)").clicked() { ui_action = UiAction::Undo; ui.close(); }
-                                if ui.button("Redo (Ctrl+Y)").clicked() { ui_action = UiAction::Redo; ui.close(); }
-                                ui.separator();
-                                if ui.button("Copy (Ctrl+C)").clicked() { ui_action = UiAction::CopySelected; ui.close(); }
-                                if ui.button("Paste (Ctrl+V)").clicked() { ui_action = UiAction::PasteSelected; ui.close(); }
-                            });
-                            ui.menu_button("Space", |ui| {
-                                ui.heading("Grid Settings");
-                                ui.separator();
-                                ui.checkbox(&mut self.grid_settings.visible, "Visible");
-                                ui.add(egui::Slider::new(&mut grid_extent_ui, 10.0..=500.0).logarithmic(true).text("Size"));
-                                let grid_mm = (grid_extent_ui * 1000.0).round() as i32;
-                                let grid_m = grid_extent_ui / 1000.0;
-                                ui.horizontal(|ui| {
-                                    ui.label("Unit:");
-                                    ui.selectable_value(&mut self.grid_settings.unit, GridUnit::Mm, "mm");
-                                    ui.selectable_value(&mut self.grid_settings.unit, GridUnit::M, "m");
-                                });
-                                match self.grid_settings.unit {
-                                    GridUnit::Mm => { ui.label(format!("{} mm", grid_mm)); }
-                                    GridUnit::M => { ui.label(format!("{:.3} m", grid_m)); }
-                                }
-                                ui.separator();
-                                ui.label("Grid Step (mm):");
-                                ui.horizontal(|ui| {
-                                    ui.label("X:");
-                                    let r = ui.add(egui::DragValue::new(&mut self.grid_settings.step_x).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.label("Y:");
-                                    let r = ui.add(egui::DragValue::new(&mut self.grid_settings.step_y).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
-                                });
-                                ui.separator();
-                                ui.label("Color:");
-                                let c = &mut self.grid_settings.color;
-                                if ui.button("🎨").clicked() {
-                                    self.show_color_picker = !self.show_color_picker;
-                                    if self.show_color_picker {
-                                        self.color_picker_hex = format!("{:02X}{:02X}{:02X}",
-                                            (c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8);
-                                    }
-                                }
-                                ui.label(format!("{:02X} {:02X} {:02X}", (c[0]*255.0) as u8, (c[1]*255.0) as u8, (c[2]*255.0) as u8));
-                                ui.label("Type:");
-                                ui.horizontal(|ui| {
-                                    ui.selectable_value(&mut self.grid_settings.grid_type, GridType::Grid, "Grid");
-                                    ui.selectable_value(&mut self.grid_settings.grid_type, GridType::Dots, "Dots");
-                                    ui.selectable_value(&mut self.grid_settings.grid_type, GridType::DotsMajor, "Dots Major");
-                                    ui.selectable_value(&mut self.grid_settings.grid_type, GridType::DotsOnly, "Dots Only");
-                                });
-                            });
-                            ui.menu_button("View", |ui| {
-                                egui::ComboBox::from_id_salt("view_direction")
-                                    .selected_text(ui_view.label())
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut ui_view, ViewDirection::Top, "Top (Y+)");
-                                        ui.selectable_value(&mut ui_view, ViewDirection::Bottom, "Bottom (Y-)");
-                                        ui.selectable_value(&mut ui_view, ViewDirection::Front, "Front (Z+)");
-                                        ui.selectable_value(&mut ui_view, ViewDirection::Back, "Back (Z-)");
-                                        ui.selectable_value(&mut ui_view, ViewDirection::Left, "Left (X-)");
-                                        ui.selectable_value(&mut ui_view, ViewDirection::Right, "Right (X+)");
-                                        ui.selectable_value(&mut ui_view, ViewDirection::Iso, "Iso");
-                                    });
-                                if self.selected.is_some() {
-                                    if ui.button("📍 Set Origin").clicked() { ui_action = UiAction::SetOriginToCursorConfirmed; ui.close(); }
-                                }
-                            });
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.toggle_value(&mut snap.enabled, "🧲 Snap");
-                                egui::ComboBox::from_id_salt("snap_target")
-                                    .selected_text(format!("{:?}", snap.target))
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut snap.target, SnapTarget::Increment, "Increment");
-                                        ui.selectable_value(&mut snap.target, SnapTarget::Grid, "Grid");
-                                        ui.selectable_value(&mut snap.target, SnapTarget::Origin, "Origin");
-                                        ui.selectable_value(&mut snap.target, SnapTarget::Vertex, "Vertex");
-                                        ui.selectable_value(&mut snap.target, SnapTarget::Edge, "Edge");
-                                    });
-                            });
-                        });
-                    });
-
-                    egui::SidePanel::left("tools")
-                        .resizable(false)
-                        .exact_width(40.0)
-                        .show(ctx, |ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add_space(10.0);
-                                if edit_m == EditMode::Object {
-                                    if ui.selectable_label(mode == TransformMode::Translate, "✥").clicked() { ui_action = UiAction::SetMode(TransformMode::Translate); }
-                                    if ui.selectable_label(mode == TransformMode::Rotate, "⟲").clicked() { ui_action = UiAction::SetMode(TransformMode::Rotate); }
-                                    if ui.selectable_label(mode == TransformMode::Scale, "⤢").clicked() { ui_action = UiAction::SetMode(TransformMode::Scale); }
+                                if self.edit_mode == EditMode::Edit && self.select_tool == SelectTool::Box {
+                                    self.drag_start = Some(self.input.cursor_pos);
+                                    self.drag_end = Some(self.input.cursor_pos);
                                 } else {
-                                    if ui.selectable_label(sel_m == SelectMode::Vertex, "1").on_hover_text("Vertex").clicked() { ui_sel_m = SelectMode::Vertex; }
-                                    if ui.selectable_label(sel_m == SelectMode::Edge, "2").on_hover_text("Edge").clicked() { ui_sel_m = SelectMode::Edge; }
-                                    if ui.selectable_label(sel_m == SelectMode::Face, "3").on_hover_text("Face").clicked() { ui_sel_m = SelectMode::Face; }
-                                    ui.separator();
-                                    if ui.selectable_label(sel_tool == SelectTool::Click, "🖱️").on_hover_text("Select Click").clicked() { ui_sel_tool = SelectTool::Click; }
-                                    if ui.selectable_label(sel_tool == SelectTool::Box, "⬚").on_hover_text("Select Box").clicked() { ui_sel_tool = SelectTool::Box; }
+                                    // FIX: LMB подтверждает G/R/S с записью истории
+                                    if self.confirm_transform_if_changed("LMB") {
+                                        return;
+                                    }
+                                    handle_lmb_press(
+                                        self.state.as_mut().unwrap(), &self.input, self.viewport_size,
+                                        &mut self.selected, &mut self.selected_elements, &mut self.drag,
+                                        self.transform_mode, self.edit_mode, self.select_mode, &mut self.scene, &self.render_map,
+                                        self.cursor_entity,
+                                    );
                                 }
-                            });
-                        });
-
-                    egui::SidePanel::right("right_panel")
-                        .resizable(true)
-                        .default_width(280.0)
-                        .show(ctx, |ui| {
-                            egui::TopBottomPanel::top("outliner")
-                                .resizable(true)
-                                .default_height(200.0)
-                                .show_inside(ui, |ui| {
-                                    ui.heading("Outliner");
-                                    ui.separator();
-                                    egui::ScrollArea::vertical().show(ui, |ui| {
-                                        let roots = {
-                                            let mut roots_vec = Vec::new();
-                                            let mut q = scene.world.query_filtered::<Entity, bevy_ecs::query::Without<Parent>>();
-                                            for e in q.iter(&scene.world) { roots_vec.push(e); }
-                                            roots_vec.into_iter().filter(|e| scene.get_name(*e) != Some("3D Cursor")).collect::<Vec<_>>()
-                                        };
-                                        for root in roots {
-                                            show_node(ui, &mut scene, root, selected, &mut editing, &mut new_selection);
-                                        }
-                                    });
-                                });
-
-                            egui::CentralPanel::default().show_inside(ui, |ui| {
-                                ui.heading(if edit_m == EditMode::Object { "Properties" } else { "Edit Mode" });
-                                ui.separator();
-                                egui::ScrollArea::vertical().show(ui, |ui| {
-                                    if let Some(sel) = selected {
-                                        if let Some(name) = scene.get_name(sel) {
-                                            ui.label(format!("Name: {}", name));
-                                        }
-                                        ui.separator();
-
-                                        if edit_m == EditMode::Edit && !selected_elements.is_empty() {
-                                            if let Some(mut custom) = scene.world.get_mut::<CustomMesh>(sel) {
-                                                let mut unique_verts = std::collections::HashSet::new();
-                                                for s in &selected_elements {
-                                                    match s {
-                                                        Selection::Vertex(i) => { unique_verts.insert(*i); }
-                                                        Selection::Edge(a, b) => { unique_verts.insert(*a); unique_verts.insert(*b); }
-                                                        Selection::Face(indices) => { for &i in indices { unique_verts.insert(i); } }
-                                                    }
-                                                }
-                                                if !unique_verts.is_empty() {
-                                                    let mut center = Vec3::ZERO;
-                                                    for &i in &unique_verts { center += custom.vertices[i]; }
-                                                    center /= unique_verts.len() as f32;
-                                                    let mut new_center = center;
-                                                     ui.label("Selection Center:");
-                                                     let mut changed = false;
-                                                      egui::Grid::new("sel_grid").show(ui, |ui| {
-                                                          ui.label("Location X");
-                                                          let r = ui.add(egui::DragValue::new(&mut new_center.x).speed(drag_speed));
-                                                          ui.label(format_val(new_center.x));
-                                                          changed |= r.changed();
-                                                          if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                          ui.end_row();
-                                                          ui.label("Location Y");
-                                                          let r = ui.add(egui::DragValue::new(&mut new_center.y).speed(drag_speed));
-                                                          ui.label(format_val(new_center.y));
-                                                          changed |= r.changed();
-                                                          if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                          ui.end_row();
-                                                          ui.label("Location Z");
-                                                          let r = ui.add(egui::DragValue::new(&mut new_center.z).speed(drag_speed));
-                                                          ui.label(format_val(new_center.z));
-                                                          changed |= r.changed();
-                                                          if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                          ui.end_row();
-                                                      });
-                                                    if changed {
-                                                        let delta = new_center - center;
-                                                        for &i in &unique_verts { custom.vertices[i] += delta; }
-                                                        let kind = scene.world.get::<MeshKindComp>(sel).unwrap().0;
-                                                        let new_vertices = build_mesh_vertices(&scene, sel, kind, &selected_elements);
-                                                        if render_map_clone.iter().any(|(e, _)| *e == sel) {
-                                                            pending_vertex_update = Some((sel, new_vertices));
+                            } else {
+                                self.input.lmb_down = false;
+                                if let Some(start) = self.drag_start.take() {
+                                    if let Some(end) = self.drag_end.take() {
+                                        let min_x = start.x.min(end.x);
+                                        let max_x = start.x.max(end.x);
+                                        let min_y = start.y.min(end.y);
+                                        let max_y = start.y.max(end.y);
+                                        let ctrl = self.input.keys.contains(&KeyCode::ControlLeft) || self.input.keys.contains(&KeyCode::ShiftLeft);
+                                        if !ctrl { self.selected_elements.clear(); }
+                                        if let Some(sel) = self.selected {
+                                            if let Some(custom) = self.scene.world.get::<CustomMesh>(sel) {
+                                                if let Some(gt) = self.scene.global_matrix(sel) {
+                                                    let kind = self.scene.world.get::<MeshKindComp>(sel).unwrap().0;
+                                                    let faces = get_current_faces(&self.scene, sel, kind);
+                                                    let edges = get_current_edges(&faces);
+                                                    match self.select_mode {
+                                                        SelectMode::Vertex => {
+                                                            for (i, &v) in custom.vertices.iter().enumerate() {
+                                                                let world_v = gt.transform_point3(v);
+                                                                let screen_v = world_to_screen(&self.state.as_ref().unwrap().camera, self.viewport_size, world_v);
+                                                                if screen_v.x >= min_x && screen_v.x <= max_x && screen_v.y >= min_y && screen_v.y <= max_y {
+                                                                    self.selected_elements.push(Selection::Vertex(i));
+                                                                }
+                                                            }
+                                                        }
+                                                        SelectMode::Edge => {
+                                                            for (a, b) in edges {
+                                                                let va = gt.transform_point3(custom.vertices[a]);
+                                                                let vb = gt.transform_point3(custom.vertices[b]);
+                                                                let mid = (va + vb) * 0.5;
+                                                                let screen_mid = world_to_screen(&self.state.as_ref().unwrap().camera, self.viewport_size, mid);
+                                                                if screen_mid.x >= min_x && screen_mid.x <= max_x && screen_mid.y >= min_y && screen_mid.y <= max_y {
+                                                                    self.selected_elements.push(Selection::Edge(a, b));
+                                                                }
+                                                            }
+                                                        }
+                                                        SelectMode::Face => {
+                                                            for face in faces {
+                                                                let mut center = Vec3::ZERO;
+                                                                for &i in &face { center += custom.vertices[i]; }
+                                                                center /= face.len() as f32;
+                                                                let world_center = gt.transform_point3(center);
+                                                                let screen_center = world_to_screen(&self.state.as_ref().unwrap().camera, self.viewport_size, world_center);
+                                                                if screen_center.x >= min_x && screen_center.x <= max_x && screen_center.y >= min_y && screen_center.y <= max_y {
+                                                                    self.selected_elements.push(Selection::Face(face));
+                                                                }
+                                                            }
                                                         }
                                                     }
+                                                    update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, sel, &self.selected_elements);
                                                 }
                                             }
-                                        } else {
-                                            if edit_m == EditMode::Object {
-                                                ui.menu_button("Set Origin", |ui| {
-                                                    if ui.button("To 3D Cursor").clicked() { ui_action = UiAction::SetOriginToCursor; ui.close(); }
-                                                    if ui.button("To Geometry").clicked() { ui_action = UiAction::SetOriginToGeometry; ui.close(); }
-                                                });
-                                                ui.separator();
-                                            }
+                                        }
+                                    }
+                                } else {
+                                    if self.drag_moved && self.drag.is_some() {
+                                        let snap = capture_snapshot(&mut self.scene);
+                                        self.history.record(snap);
+                                    }
+                                    self.drag = None;
+                                    self.drag_moved = false;
+                                }
+                            }
+                        }
+                        MouseButton::Right => {
+                            self.cancel_transform();
+                            self.input.rmb_down = btn_state == ElementState::Pressed;
+                        }
 
-                                            if let Some(mut t) = scene.world.get_mut::<Transform>(sel) {
-                                                ui.label("Transform:");
-                                                 egui::Grid::new("transform_grid").show(ui, |ui| {
-                                                     ui.label("Location X");
-                                                     let r = ui.add(egui::DragValue::new(&mut t.translation.x).speed(drag_speed));
-                                                     ui.label(format_val(t.translation.x));
-                                                     if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                     ui.end_row();
-                                                     ui.label("Location Y");
-                                                     let r = ui.add(egui::DragValue::new(&mut t.translation.y).speed(drag_speed));
-                                                     ui.label(format_val(t.translation.y));
-                                                     if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                     ui.end_row();
-                                                     ui.label("Location Z");
-                                                     let r = ui.add(egui::DragValue::new(&mut t.translation.z).speed(drag_speed));
-                                                     ui.label(format_val(t.translation.z));
-                                                     if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                     ui.end_row();
+                        MouseButton::Middle => {
+                            self.input.mmb_down = btn_state == ElementState::Pressed;
+                        }
+                        _ => {}
+                    }
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    let scroll = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y,
+                        MouseScrollDelta::PixelDelta(position) => position.y as f32 / 100.0,
+                    };
+                    let state = self.state.as_mut().unwrap();
+                    state.camera.zoom(scroll);
+                    state.update_camera();
+                }
 
-                                                    let (mut rx, mut ry, mut rz) = t.rotation.to_euler(glam::EulerRot::XYZ);
-                                                    let mut rot_changed = false;
-                                                    ui.label("Rotation X");
-                                                    let r = ui.add(egui::DragValue::new(&mut rx).speed(0.01));
-                                                    rot_changed |= r.changed();
-                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                    ui.end_row();
-                                                    ui.label("Rotation Y");
-                                                    let r = ui.add(egui::DragValue::new(&mut ry).speed(0.01));
-                                                    rot_changed |= r.changed();
-                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                    ui.end_row();
-                                                    ui.label("Rotation Z");
-                                                    let r = ui.add(egui::DragValue::new(&mut rz).speed(0.01));
-                                                    rot_changed |= r.changed();
-                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                    ui.end_row();
-                                                    if rot_changed {
-                                                        t.rotation = glam::Quat::from_euler(glam::EulerRot::XYZ, rx, ry, rz);
+                WindowEvent::RedrawRequested => {
+                    let dt = Self::frame_dt(&mut self.input);
+                    {
+                        let state = self.state.as_mut().unwrap();
+                        Self::update_camera(&self.input, state, dt);
+                    }
+
+                    self.scene.update();
+
+                    {
+                        let state = self.state.as_mut().unwrap();
+                        for (entity, idx) in &self.render_map {
+                            if let Some(mat) = self.scene.global_matrix(*entity) {
+                                state.set_object_transform(*idx, mat);
+                            }
+                        }
+                        if self.edit_mode == EditMode::Edit {
+                            if let Some(sel) = self.selected {
+                                if let Some(custom) = self.scene.world.get::<CustomMesh>(sel) {
+                                    if let Some(gt) = self.scene.global_matrix(sel) {
+                                        let kind = self.scene.world.get::<MeshKindComp>(sel).unwrap().0;
+                                        let faces = get_current_faces(&self.scene, sel, kind);
+                                        let edges = get_current_edges(&faces);
+                                        let handles = get_handles_for_mode(self.select_mode, &faces, &edges, &custom.vertices);
+                                        
+                                        // Compute proportional handle size from bounding box
+                                        let mut min = Vec3::splat(f32::INFINITY);
+                                        let mut max = Vec3::splat(f32::NEG_INFINITY);
+                                        for v in &custom.vertices {
+                                            let wp = gt.transform_point3(*v);
+                                            min = min.min(wp);
+                                            max = max.max(wp);
+                                        }
+                                        let bbox_size = (max - min).length().max(0.001);
+                                        let handle_scale = bbox_size * 0.08; // 8% of bounding box diagonal
+                                        
+                                        for (i, &local_pos) in handles.iter().enumerate() {
+                                            if i < self.edit_handles.len() {
+                                                let world = gt.transform_point3(local_pos);
+                                                state.set_object_transform(self.edit_handles[i], Mat4::from_translation(world) * Mat4::from_scale(Vec3::splat(handle_scale)));
+                                                let is_selected = self.selected_elements.iter().any(|s| match s {
+                                                    Selection::Vertex(idx) => self.select_mode == SelectMode::Vertex && *idx == i,
+                                                    Selection::Edge(a, b) => {
+                                                        if self.select_mode == SelectMode::Edge { edges.get(i) == Some(&(*a, *b)) } else { false }
+                                                    },
+                                                    Selection::Face(face_indices) => {
+                                                        if self.select_mode == SelectMode::Face { faces.get(i) == Some(face_indices) } else { false }
                                                     }
-
-                                                    ui.label("Scale X");
-                                                    let r = ui.add(egui::DragValue::new(&mut t.scale.x).speed(0.02).range(0.01..=100.0));
-                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                    ui.end_row();
-                                                    ui.label("Scale Y");
-                                                    let r = ui.add(egui::DragValue::new(&mut t.scale.y).speed(0.02).range(0.01..=100.0));
-                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                    ui.end_row();
-                                                    ui.label("Scale Z");
-                                                    let r = ui.add(egui::DragValue::new(&mut t.scale.z).speed(0.02).range(0.01..=100.0));
-                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                    ui.end_row();
                                                 });
+                                                if is_selected {
+                                                    state.set_object_tint(self.edit_handles[i], [1.0, 0.5, 0.0, 1.0]);
+                                                } else {
+                                                    state.set_object_tint(self.edit_handles[i], [0.0, 1.0, 1.0, 1.0]);
+                                                }
                                             }
                                         }
-                                    } else if let Some(cursor_e) = cursor_e {
-                                        ui.label("3D Cursor:");
-                                        egui::Grid::new("cursor_grid").show(ui, |ui| {
-                                            if let Some(mut t) = scene.world.get_mut::<Transform>(cursor_e) {
-                                                ui.label("Location X");
-                                                let r = ui.add(egui::DragValue::new(&mut t.translation.x).speed(drag_speed));
-                                                ui.label(format_val(t.translation.x));
-                                                if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                ui.end_row();
-                                                ui.label("Location Y");
-                                                let r = ui.add(egui::DragValue::new(&mut t.translation.y).speed(drag_speed));
-                                                ui.label(format_val(t.translation.y));
-                                                if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                ui.end_row();
-                                                ui.label("Location Z");
-                                                let r = ui.add(egui::DragValue::new(&mut t.translation.z).speed(drag_speed));
-                                                ui.label(format_val(t.translation.z));
-                                                if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                ui.end_row();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    update_gizmo_positions(self.state.as_mut().unwrap(), self.gizmo.as_ref(), self.selected, &self.selected_elements, self.edit_mode, self.transform_mode, &self.scene);
+
+                    let mut ui_action = UiAction::None;
+                    let mut scene = std::mem::replace(&mut self.scene, Scene::new());
+                    let selected = self.selected;
+                    let mut editing = self.editing_entity;
+                    let mut new_selection = None;
+                    let mode = self.transform_mode;
+                    let edit_m = self.edit_mode;
+                    let sel_m = self.select_mode;
+                    let sel_tool = self.select_tool;
+                    let can_undo = self.history.can_undo();
+                    let can_redo = self.history.can_redo();
+                    let cursor_e = self.cursor_entity;
+                    let snap = &mut self.snap;
+                    let mut ui_sel_m = self.select_mode;
+                    let mut ui_sel_tool = self.select_tool;
+                    let mut ui_view = self.current_view;
+                    let drag_start = self.drag_start;
+                    let drag_end = self.drag_end;
+                    let selected_elements = self.selected_elements.clone();
+                    let render_map_clone = self.render_map.clone();
+                    let state = self.state.as_mut().unwrap();
+                    let mut pending_vertex_update: Option<(Entity, Vec<Vertex>)> = None;
+                    let mut grid_extent_ui = state.grid_extent;
+
+                    // FIX: флаг "было ли изменение через numeric input".
+                    // Ставится внутри closure, применяется после.
+                    let mut pending_history_record = false;
+                    let grid_unit = self.grid_settings.unit;
+
+                    let result = state.render_with_ui(|ctx| {
+                        let unit = grid_unit;
+                        let format_val = |v: f32| -> String {
+                            match unit {
+                                GridUnit::Mm => format!("{} mm", (v * 1000.0) as i32),
+                                GridUnit::M => format!("{:.3} m", v),
+                            }
+                        };
+                        let drag_speed = match unit {
+                            GridUnit::Mm => 0.02,
+                            GridUnit::M => 0.00002,
+                        };
+
+                        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
+                            egui::MenuBar::new().ui(ui, |ui| {
+                                ui.menu_button("File", |ui| {
+                                    if ui.button("💾 Save").clicked() { ui_action = UiAction::Save; ui.close(); }
+                                    if ui.button("💾 Save As...").clicked() { self.show_save_as = true; ui.close(); }
+                                    if ui.button("📂 Load").clicked() { ui_action = UiAction::Load; ui.close(); }
+                                    if ui.button("⚙ Load G-code").clicked() { ui_action = UiAction::LoadGcode; ui.close(); }
+                                });
+                                ui.menu_button("Add", |ui| {
+                                    if ui.button("Cube").clicked() { ui_action = UiAction::AddCube; ui.close(); }
+                                    if ui.button("Plane").clicked() { ui_action = UiAction::AddPlane; ui.close(); }
+                                    if ui.button("Cylinder").clicked() { ui_action = UiAction::AddCylinder; ui.close(); }
+                                    if ui.button("Sphere").clicked() { ui_action = UiAction::AddSphere; ui.close(); }
+                                    if ui.button("Pyramid").clicked() { ui_action = UiAction::AddPyramid; ui.close(); }
+                                });
+                                ui.menu_button("Edit", |ui| {
+                                    if ui.button("Undo (Ctrl+Z)").clicked() { ui_action = UiAction::Undo; ui.close(); }
+                                    if ui.button("Redo (Ctrl+Y)").clicked() { ui_action = UiAction::Redo; ui.close(); }
+                                    ui.separator();
+                                    if ui.button("Copy (Ctrl+C)").clicked() { ui_action = UiAction::CopySelected; ui.close(); }
+                                    if ui.button("Paste (Ctrl+V)").clicked() { ui_action = UiAction::PasteSelected; ui.close(); }
+                                });
+                                ui.menu_button("Space", |ui| {
+                                    ui.heading("Grid Settings");
+                                    ui.separator();
+                                    ui.checkbox(&mut self.grid_settings.visible, "Visible");
+                                    ui.add(egui::Slider::new(&mut grid_extent_ui, 10.0..=500.0).logarithmic(true).text("Size"));
+                                    let grid_mm = (grid_extent_ui * 1000.0).round() as i32;
+                                    let grid_m = grid_extent_ui / 1000.0;
+                                    ui.horizontal(|ui| {
+                                        ui.label("Unit:");
+                                        ui.selectable_value(&mut self.grid_settings.unit, GridUnit::Mm, "mm");
+                                        ui.selectable_value(&mut self.grid_settings.unit, GridUnit::M, "m");
+                                    });
+                                    match self.grid_settings.unit {
+                                        GridUnit::Mm => { ui.label(format!("{} mm", grid_mm)); }
+                                        GridUnit::M => { ui.label(format!("{:.3} m", grid_m)); }
+                                    }
+                                    ui.separator();
+                                    ui.label("Grid Step (mm):");
+                                    ui.horizontal(|ui| {
+                                        ui.label("X:");
+                                        let _r = ui.add(egui::DragValue::new(&mut self.grid_settings.step_x).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Y:");
+                                        let r = ui.add(egui::DragValue::new(&mut self.grid_settings.step_y).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
+                                    });
+                                    ui.separator();
+                                    ui.label("Color:");
+                                    let c = &mut self.grid_settings.color;
+                                    if ui.button("🎨").clicked() {
+                                        self.show_color_picker = !self.show_color_picker;
+                                        if self.show_color_picker {
+                                            self.color_picker_hex = format!("{:02X}{:02X}{:02X}",
+                                                (c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8);
+                                        }
+                                    }
+                                    ui.label(format!("{:02X} {:02X} {:02X}", (c[0]*255.0) as u8, (c[1]*255.0) as u8, (c[2]*255.0) as u8));
+                                    ui.label("Type:");
+                                    ui.horizontal(|ui| {
+                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::Grid, "Grid");
+                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::Dots, "Dots");
+                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::DotsMajor, "Dots Major");
+                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::DotsOnly, "Dots Only");
+                                    });
+                                });
+                                ui.menu_button("View", |ui| {
+                                    egui::ComboBox::from_id_salt("view_direction")
+                                        .selected_text(ui_view.label())
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(&mut ui_view, ViewDirection::Top, "Top (Y+)");
+                                            ui.selectable_value(&mut ui_view, ViewDirection::Bottom, "Bottom (Y-)");
+                                            ui.selectable_value(&mut ui_view, ViewDirection::Front, "Front (Z+)");
+                                            ui.selectable_value(&mut ui_view, ViewDirection::Back, "Back (Z-)");
+                                            ui.selectable_value(&mut ui_view, ViewDirection::Left, "Left (X-)");
+                                            ui.selectable_value(&mut ui_view, ViewDirection::Right, "Right (X+)");
+                                            ui.selectable_value(&mut ui_view, ViewDirection::Iso, "Iso");
+                                        });
+                                    if self.selected.is_some() {
+                                        if ui.button("📍 Set Origin").clicked() { ui_action = UiAction::SetOriginToCursorConfirmed; ui.close(); }
+                                    }
+                                });
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.toggle_value(&mut snap.enabled, "🧲 Snap");
+                                    egui::ComboBox::from_id_salt("snap_target")
+                                        .selected_text(format!("{:?}", snap.target))
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(&mut snap.target, SnapTarget::Increment, "Increment");
+                                            ui.selectable_value(&mut snap.target, SnapTarget::Grid, "Grid");
+                                            ui.selectable_value(&mut snap.target, SnapTarget::Origin, "Origin");
+                                            ui.selectable_value(&mut snap.target, SnapTarget::Vertex, "Vertex");
+                                            ui.selectable_value(&mut snap.target, SnapTarget::Edge, "Edge");
+                                        });
+                                });
+                            });
+                        });
+
+                        egui::SidePanel::left("tools")
+                            .resizable(false)
+                            .exact_width(40.0)
+                            .show(ctx, |ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add_space(10.0);
+                                    if edit_m == EditMode::Object {
+                                        if ui.selectable_label(mode == TransformMode::Translate, "✥").clicked() { ui_action = UiAction::SetMode(TransformMode::Translate); }
+                                        if ui.selectable_label(mode == TransformMode::Rotate, "⟲").clicked() { ui_action = UiAction::SetMode(TransformMode::Rotate); }
+                                        if ui.selectable_label(mode == TransformMode::Scale, "⤢").clicked() { ui_action = UiAction::SetMode(TransformMode::Scale); }
+                                    } else {
+                                        if ui.selectable_label(sel_m == SelectMode::Vertex, "1").on_hover_text("Vertex").clicked() { ui_sel_m = SelectMode::Vertex; }
+                                        if ui.selectable_label(sel_m == SelectMode::Edge, "2").on_hover_text("Edge").clicked() { ui_sel_m = SelectMode::Edge; }
+                                        if ui.selectable_label(sel_m == SelectMode::Face, "3").on_hover_text("Face").clicked() { ui_sel_m = SelectMode::Face; }
+                                        ui.separator();
+                                        if ui.selectable_label(sel_tool == SelectTool::Click, "🖱️").on_hover_text("Select Click").clicked() { ui_sel_tool = SelectTool::Click; }
+                                        if ui.selectable_label(sel_tool == SelectTool::Box, "⬚").on_hover_text("Select Box").clicked() { ui_sel_tool = SelectTool::Box; }
+                                    }
+                                });
+                            });
+
+                        egui::SidePanel::right("right_panel")
+                            .resizable(true)
+                            .default_width(280.0)
+                            .show(ctx, |ui| {
+                                egui::TopBottomPanel::top("outliner")
+                                    .resizable(true)
+                                    .default_height(200.0)
+                                    .show_inside(ui, |ui| {
+                                        ui.heading("Outliner");
+                                        ui.separator();
+                                        egui::ScrollArea::vertical().show(ui, |ui| {
+                                            let roots = {
+                                                let mut roots_vec = Vec::new();
+                                                let mut q = scene.world.query_filtered::<Entity, bevy_ecs::query::Without<Parent>>();
+                                                for e in q.iter(&scene.world) { roots_vec.push(e); }
+                                                roots_vec.into_iter().filter(|e| scene.get_name(*e) != Some("3D Cursor")).collect::<Vec<_>>()
+                                            };
+                                            for root in roots {
+                                                show_node(ui, &mut scene, root, selected, &mut editing, &mut new_selection);
                                             }
                                         });
-                                    }
-                                });
-                            });
-                        });
+                                    });
 
-                    if let (Some(start), Some(end)) = (drag_start, drag_end) {
-                        let rect = egui::Rect::from_two_pos(
-                            egui::pos2(start.x, start.y),
-                            egui::pos2(end.x, end.y),
-                        );
-                        egui::Area::new(egui::Id::new("box_select"))
-                            .fixed_pos(rect.min)
-                            .show(ctx, |ui| {
-                                let painter = ui.painter();
-                                let r = egui::Rect::from_min_size(egui::Pos2::ZERO, rect.size());
-                                painter.rect_filled(r, 0.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 50));
-                                painter.rect_stroke(r, 0.0, egui::Stroke::new(1.0_f32, egui::Color32::WHITE), egui::StrokeKind::Outside);
-                            });
-                    }
+                                egui::CentralPanel::default().show_inside(ui, |ui| {
+                                    ui.heading(if edit_m == EditMode::Object { "Properties" } else { "Edit Mode" });
+                                    ui.separator();
+                                    egui::ScrollArea::vertical().show(ui, |ui| {
+                                        if let Some(sel) = selected {
+                                            if let Some(name) = scene.get_name(sel) {
+                                                ui.label(format!("Name: {}", name));
+                                            }
+                                            ui.separator();
 
-                    if self.delete_confirm {
-                        let dialog_pos = egui::pos2(
-                            (self.delete_confirm_pos.x + 15.0).clamp(0.0, ctx.viewport_rect().max.x - 200.0),
-                            (self.delete_confirm_pos.y + 15.0).clamp(0.0, ctx.viewport_rect().max.y - 80.0),
-                        );
-                        egui::Area::new(egui::Id::new("delete_confirm"))
-                            .fixed_pos(dialog_pos)
-                            .show(ctx, |ui| {
-                                let layout = egui::Layout::centered_and_justified(egui::Direction::LeftToRight);
-                                ui.allocate_ui_with_layout(egui::Vec2::ZERO, layout, |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label("Удалить объект?");
-                                        if ui.button("Да").clicked() {
-                                            ui_action = UiAction::ConfirmDelete;
-                                            self.delete_confirm = false;
-                                            ui.close();
-                                        }
-                                        if ui.button("Нет").clicked() {
-                                            self.delete_confirm = false;
-                                            ui.close();
+                                            if edit_m == EditMode::Edit && !selected_elements.is_empty() {
+                                                if let Some(mut custom) = scene.world.get_mut::<CustomMesh>(sel) {
+                                                    let mut unique_verts = std::collections::HashSet::new();
+                                                    for s in &selected_elements {
+                                                        match s {
+                                                            Selection::Vertex(i) => { unique_verts.insert(*i); }
+                                                            Selection::Edge(a, b) => { unique_verts.insert(*a); unique_verts.insert(*b); }
+                                                            Selection::Face(indices) => { for &i in indices { unique_verts.insert(i); } }
+                                                        }
+                                                    }
+                                                    if !unique_verts.is_empty() {
+                                                        let mut center = Vec3::ZERO;
+                                                        for &i in &unique_verts { center += custom.vertices[i]; }
+                                                        center /= unique_verts.len() as f32;
+                                                        let mut new_center = center;
+                                                        ui.label("Selection Center:");
+                                                        let mut changed = false;
+                                                        egui::Grid::new("sel_grid").show(ui, |ui| {
+                                                            ui.label("Location X");
+                                                            let r = ui.add(egui::DragValue::new(&mut new_center.x).speed(drag_speed));
+                                                            ui.label(format_val(new_center.x));
+                                                            changed |= r.changed();
+                                                            if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                            ui.end_row();
+                                                            ui.label("Location Y");
+                                                            let r = ui.add(egui::DragValue::new(&mut new_center.y).speed(drag_speed));
+                                                            ui.label(format_val(new_center.y));
+                                                            changed |= r.changed();
+                                                            if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                            ui.end_row();
+                                                            ui.label("Location Z");
+                                                            let r = ui.add(egui::DragValue::new(&mut new_center.z).speed(drag_speed));
+                                                            ui.label(format_val(new_center.z));
+                                                            changed |= r.changed();
+                                                            if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                            ui.end_row();
+                                                        });
+                                                        if changed {
+                                                            let delta = new_center - center;
+                                                            for &i in &unique_verts { custom.vertices[i] += delta; }
+                                                            let kind = scene.world.get::<MeshKindComp>(sel).unwrap().0;
+                                                            let new_vertices = build_mesh_vertices(&scene, sel, kind, &selected_elements);
+                                                            if render_map_clone.iter().any(|(e, _)| *e == sel) {
+                                                                pending_vertex_update = Some((sel, new_vertices));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                if edit_m == EditMode::Object {
+                                                    ui.menu_button("Set Origin", |ui| {
+                                                        if ui.button("To 3D Cursor").clicked() { ui_action = UiAction::SetOriginToCursor; ui.close(); }
+                                                        if ui.button("To Geometry").clicked() { ui_action = UiAction::SetOriginToGeometry; ui.close(); }
+                                                    });
+                                                    ui.separator();
+                                                }
+
+                                                if let Some(mut t) = scene.world.get_mut::<Transform>(sel) {
+                                                    ui.label("Transform:");
+                                                    egui::Grid::new("transform_grid").show(ui, |ui| {
+                                                        ui.label("Location X");
+                                                        let r = ui.add(egui::DragValue::new(&mut t.translation.x).speed(drag_speed));
+                                                        ui.label(format_val(t.translation.x));
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                        ui.end_row();
+                                                        ui.label("Location Y");
+                                                        let r = ui.add(egui::DragValue::new(&mut t.translation.y).speed(drag_speed));
+                                                        ui.label(format_val(t.translation.y));
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                        ui.end_row();
+                                                        ui.label("Location Z");
+                                                        let r = ui.add(egui::DragValue::new(&mut t.translation.z).speed(drag_speed));
+                                                        ui.label(format_val(t.translation.z));
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                        ui.end_row();
+
+                                                        let (rx_rad, ry_rad, rz_rad) =
+                                                            t.rotation.to_euler(glam::EulerRot::XYZ);
+
+                                                        // Отображаем и редактируем градусы.
+                                                        let mut rx = rx_rad.to_degrees();
+                                                        let mut ry = ry_rad.to_degrees();
+                                                        let mut rz = rz_rad.to_degrees();
+
+                                                        let mut rot_changed = false;
+
+                                                        ui.label("Rotation X");
+                                                        let r = ui.add(
+                                                            egui::DragValue::new(&mut rx)
+                                                                .speed(0.5)
+                                                                .suffix("°")
+                                                        );
+                                                        rot_changed |= r.changed();
+                                                        if r.drag_stopped() || r.lost_focus() {
+                                                            pending_history_record = true;
+                                                        }
+                                                        ui.end_row();
+
+                                                        ui.label("Rotation Y");
+                                                        let r = ui.add(
+                                                            egui::DragValue::new(&mut ry)
+                                                                .speed(0.5)
+                                                                .suffix("°")
+                                                        );
+                                                        rot_changed |= r.changed();
+                                                        if r.drag_stopped() || r.lost_focus() {
+                                                            pending_history_record = true;
+                                                        }
+                                                        ui.end_row();
+
+                                                        ui.label("Rotation Z");
+                                                        let r = ui.add(
+                                                            egui::DragValue::new(&mut rz)
+                                                                .speed(0.5)
+                                                                .suffix("°")
+                                                        );
+                                                        rot_changed |= r.changed();
+                                                        if r.drag_stopped() || r.lost_focus() {
+                                                            pending_history_record = true;
+                                                        }
+                                                        ui.end_row();
+
+                                                        if rot_changed {
+                                                            t.rotation = glam::Quat::from_euler(
+                                                                glam::EulerRot::XYZ,
+                                                                rx.to_radians(),
+                                                                ry.to_radians(),
+                                                                rz.to_radians(),
+                                                            );
+                                                        }
+                                                    });
+                                                }
+                                            }
+                                        } else if let Some(cursor_e) = cursor_e {
+                                            ui.label("3D Cursor:");
+                                            egui::Grid::new("cursor_grid").show(ui, |ui| {
+                                                if let Some(mut t) = scene.world.get_mut::<Transform>(cursor_e) {
+                                                    ui.label("Location X");
+                                                    let r = ui.add(egui::DragValue::new(&mut t.translation.x).speed(drag_speed));
+                                                    ui.label(format_val(t.translation.x));
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                    ui.end_row();
+                                                    ui.label("Location Y");
+                                                    let r = ui.add(egui::DragValue::new(&mut t.translation.y).speed(drag_speed));
+                                                    ui.label(format_val(t.translation.y));
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                    ui.end_row();
+                                                    ui.label("Location Z");
+                                                    let r = ui.add(egui::DragValue::new(&mut t.translation.z).speed(drag_speed));
+                                                    ui.label(format_val(t.translation.z));
+                                                    if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                    ui.end_row();
+                                                }
+                                            });
                                         }
                                     });
                                 });
                             });
-                    }
 
-                    if self.show_save_as {
-                        egui::Window::new("Save As")
-                            .default_size([320.0, 100.0])
-                            .show(ctx, |ui| {
-                                ui.label("File path:");
-                                ui.text_edit_singleline(&mut self.save_as_path);
-                                ui.separator();
-                                ui.horizontal(|ui| {
-                                    if ui.button("Save").clicked() {
-                                        ui_action = UiAction::SaveAs;
-                                        self.show_save_as = false;
-                                    }
-                                    if ui.button("Cancel").clicked() {
-                                        self.show_save_as = false;
-                                    }
+                        if let (Some(start), Some(end)) = (drag_start, drag_end) {
+                            let rect = egui::Rect::from_two_pos(
+                                egui::pos2(start.x, start.y),
+                                egui::pos2(end.x, end.y),
+                            );
+                            egui::Area::new(egui::Id::new("box_select"))
+                                .fixed_pos(rect.min)
+                                .show(ctx, |ui| {
+                                    let painter = ui.painter();
+                                    let r = egui::Rect::from_min_size(egui::Pos2::ZERO, rect.size());
+                                    painter.rect_filled(r, 0.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 50));
+                                    painter.rect_stroke(r, 0.0, egui::Stroke::new(1.0_f32, egui::Color32::WHITE), egui::StrokeKind::Outside);
                                 });
-                            });
-                    }
+                        }
 
-                    if self.show_color_picker {
-                        egui::Window::new("Grid Color")
-                            .default_size([220.0, 160.0])
-                            .show(ctx, |ui| {
-                                let c = &mut self.grid_settings.color;
-                                let mut rgb = [
-                                    (c[0] * 255.0) as u8,
-                                    (c[1] * 255.0) as u8,
-                                    (c[2] * 255.0) as u8,
-                                ];
-                                if ui.color_edit_button_srgb(&mut rgb).changed() {
-                                    c[0] = rgb[0] as f32 / 255.0;
-                                    c[1] = rgb[1] as f32 / 255.0;
-                                    c[2] = rgb[2] as f32 / 255.0;
-                                    self.color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
-                                }
-                                ui.separator();
-                                ui.horizontal(|ui| {
-                                    ui.label("HEX:");
-                                    let resp = ui.add(egui::TextEdit::singleline(&mut self.color_picker_hex)
-                                        .font(egui::FontId::monospace(12.0)));
-                                    if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                        let hex = self.color_picker_hex.trim().trim_start_matches('#');
-                                        if hex.len() == 6 {
-                                            if let Ok(val) = u32::from_str_radix(hex, 16) {
-                                                let r = ((val >> 16) & 0xFF) as f32 / 255.0;
-                                                let g = ((val >> 8) & 0xFF) as f32 / 255.0;
-                                                let b = (val & 0xFF) as f32 / 255.0;
-                                                c[0] = r;
-                                                c[1] = g;
-                                                c[2] = b;
-                                                rgb[0] = (r * 255.0) as u8;
-                                                rgb[1] = (g * 255.0) as u8;
-                                                rgb[2] = (b * 255.0) as u8;
+                        if self.delete_confirm {
+                            let dialog_pos = egui::pos2(
+                                (self.delete_confirm_pos.x + 15.0).clamp(0.0, ctx.viewport_rect().max.x - 200.0),
+                                (self.delete_confirm_pos.y + 15.0).clamp(0.0, ctx.viewport_rect().max.y - 80.0),
+                            );
+                            egui::Area::new(egui::Id::new("delete_confirm"))
+                                .fixed_pos(dialog_pos)
+                                .show(ctx, |ui| {
+                                    let layout = egui::Layout::centered_and_justified(egui::Direction::LeftToRight);
+                                    ui.allocate_ui_with_layout(egui::Vec2::ZERO, layout, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label("Удалить объект?");
+                                            if ui.button("Да").clicked() {
+                                                ui_action = UiAction::ConfirmDelete;
+                                                self.delete_confirm = false;
+                                                ui.close();
+                                            }
+                                            if ui.button("Нет").clicked() {
+                                                self.delete_confirm = false;
+                                                ui.close();
+                                            }
+                                        });
+                                    });
+                                });
+                        }
+
+                        if self.show_save_as {
+                            egui::Window::new("Save As")
+                                .default_size([320.0, 100.0])
+                                .show(ctx, |ui| {
+                                    ui.label("File path:");
+                                    ui.text_edit_singleline(&mut self.save_as_path);
+                                    ui.separator();
+                                    ui.horizontal(|ui| {
+                                        if ui.button("Save").clicked() {
+                                            ui_action = UiAction::SaveAs;
+                                            self.show_save_as = false;
+                                        }
+                                        if ui.button("Cancel").clicked() {
+                                            self.show_save_as = false;
+                                        }
+                                    });
+                                });
+                        }
+
+                        if self.show_color_picker {
+                            egui::Window::new("Grid Color")
+                                .default_size([220.0, 160.0])
+                                .show(ctx, |ui| {
+                                    let c = &mut self.grid_settings.color;
+                                    let mut rgb = [
+                                        (c[0] * 255.0) as u8,
+                                        (c[1] * 255.0) as u8,
+                                        (c[2] * 255.0) as u8,
+                                    ];
+                                    if ui.color_edit_button_srgb(&mut rgb).changed() {
+                                        c[0] = rgb[0] as f32 / 255.0;
+                                        c[1] = rgb[1] as f32 / 255.0;
+                                        c[2] = rgb[2] as f32 / 255.0;
+                                        self.color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
+                                    }
+                                    ui.separator();
+                                    ui.horizontal(|ui| {
+                                        ui.label("HEX:");
+                                        let resp = ui.add(egui::TextEdit::singleline(&mut self.color_picker_hex)
+                                            .font(egui::FontId::monospace(12.0)));
+                                        if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                            let hex = self.color_picker_hex.trim().trim_start_matches('#');
+                                            if hex.len() == 6 {
+                                                if let Ok(val) = u32::from_str_radix(hex, 16) {
+                                                    let r = ((val >> 16) & 0xFF) as f32 / 255.0;
+                                                    let g = ((val >> 8) & 0xFF) as f32 / 255.0;
+                                                    let b = (val & 0xFF) as f32 / 255.0;
+                                                    c[0] = r;
+                                                    c[1] = g;
+                                                    c[2] = b;
+                                                    rgb[0] = (r * 255.0) as u8;
+                                                    rgb[1] = (g * 255.0) as u8;
+                                                    rgb[2] = (b * 255.0) as u8;
+                                                }
                                             }
                                         }
+                                    });
+                                    ui.separator();
+                                    if ui.button("OK").clicked() {
+                                        self.show_color_picker = false;
+                                        self.color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
                                     }
                                 });
-                                ui.separator();
-                                if ui.button("OK").clicked() {
-                                    self.show_color_picker = false;
-                                    self.color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
-                                }
-                            });
+                        }
+                    });
+
+                    let gs = &mut self.grid_settings;
+                    let grid_type_val = match gs.grid_type {
+                        GridType::Grid => 0.0,
+                        GridType::Dots => 1.0,
+                        GridType::DotsMajor => 2.0,
+                        GridType::DotsOnly => 3.0,
+                    };
+                    let needs_update = state.grid_color != gs.color[..3] 
+                        || state.grid_type != grid_type_val 
+                        || state.grid_visible != gs.visible
+                        || state.grid_step_x != gs.step_x / 1000.0
+                        || state.grid_step_y != gs.step_y / 1000.0;
+                    if needs_update {
+                        state.grid_color = [gs.color[0], gs.color[1], gs.color[2]];
+                        state.grid_type = grid_type_val;
+                        state.grid_visible = gs.visible;
+                        state.grid_step_x = gs.step_x / 1000.0;
+                        state.grid_step_y = gs.step_y / 1000.0;
+                        state.update_camera();
                     }
-                });
-
-                let gs = &mut self.grid_settings;
-                let grid_type_val = match gs.grid_type {
-                    GridType::Grid => 0.0,
-                    GridType::Dots => 1.0,
-                    GridType::DotsMajor => 2.0,
-                    GridType::DotsOnly => 3.0,
-                };
-                let needs_update = state.grid_color != gs.color[..3] 
-                    || state.grid_type != grid_type_val 
-                    || state.grid_visible != gs.visible
-                    || state.grid_step_x != gs.step_x / 1000.0
-                    || state.grid_step_y != gs.step_y / 1000.0;
-                if needs_update {
-                    state.grid_color = [gs.color[0], gs.color[1], gs.color[2]];
-                    state.grid_type = grid_type_val;
-                    state.grid_visible = gs.visible;
-                    state.grid_step_x = gs.step_x / 1000.0;
-                    state.grid_step_y = gs.step_y / 1000.0;
-                    state.update_camera();
-                }
-                if state.grid_extent != grid_extent_ui {
-                    state.grid_extent = grid_extent_ui;
-                    state.update_camera();
-                }
-
-                if ui_view != self.current_view {
-                    self.current_view = ui_view;
-                    state.camera.set_view_direction(ui_view.dir());
-                    state.update_camera();
-                }
-
-                self.scene = scene;
-                self.editing_entity = editing;
-
-                // FIX: запись в историю после numeric input
-                if pending_history_record {
-                    self.history.record(capture_snapshot(&mut self.scene));
-                }
-
-                if let Some((sel, verts)) = pending_vertex_update {
-                    if let Some((_, r_idx)) = self.render_map.iter().find(|(e, _)| *e == sel) {
-                        self.state.as_mut().unwrap().update_object_vertices(*r_idx, &verts);
+                    if state.grid_extent != grid_extent_ui {
+                        state.grid_extent = grid_extent_ui;
+                        state.update_camera();
                     }
-                }
 
-                if self.select_mode != ui_sel_m {
-                    self.select_mode = ui_sel_m;
-                    self.selected_elements.clear();
-                    update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
-                }
-                self.select_tool = ui_sel_tool;
+                    if ui_view != self.current_view {
+                        self.current_view = ui_view;
+                        state.camera.set_view_direction(ui_view.dir());
+                        state.update_camera();
+                    }
 
-                if let Err(e) = result {
-                    eprintln!("render error: {e:?}");
-                    event_loop.exit();
-                    return;
-                }
+                    self.scene = scene;
+                    self.editing_entity = editing;
 
-                if let Some(new_sel) = new_selection {
-                    let old = self.selected;
-                    if old != Some(new_sel) {
-                        self.selected = Some(new_sel);
-                        set_selection(self.state.as_mut().unwrap(), &self.render_map, old, self.selected);
-                        self.edit_mode = EditMode::Object;
+                    // FIX: запись в историю после numeric input
+                    if pending_history_record {
+                        self.history.record(capture_snapshot(&mut self.scene));
+                    }
+
+                    if let Some((sel, verts)) = pending_vertex_update {
+                        if let Some((_, r_idx)) = self.render_map.iter().find(|(e, _)| *e == sel) {
+                            self.state.as_mut().unwrap().update_object_vertices(*r_idx, &verts);
+                        }
+                    }
+
+                    if self.select_mode != ui_sel_m {
+                        self.select_mode = ui_sel_m;
                         self.selected_elements.clear();
                         update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
                     }
-                }
+                    self.select_tool = ui_sel_tool;
 
-                self.apply_ui_action(ui_action);
+                    if let Err(e) = result {
+                        eprintln!("render error: {e:?}");
+                        event_loop.exit();
+                        return;
+                    }
 
-                if self.pending_undo {
-                    self.pending_undo = false;
-                    self.do_undo();
-                }
-                if self.pending_redo {
-                    self.pending_redo = false;
-                    self.do_redo();
-                }
-            }
-            _ => {}
-        }
-    }
+                    if let Some(new_sel) = new_selection {
+                        let old = self.selected;
+                        if old != Some(new_sel) {
+                            self.selected = Some(new_sel);
+                            set_selection(self.state.as_mut().unwrap(), &self.render_map, old, self.selected);
+                            self.edit_mode = EditMode::Object;
+                            self.selected_elements.clear();
+                            update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
+                        }
+                    }
 
-    fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
-        if let Some(window) = &self.window { window.request_redraw(); }
-    }
-}
+                    self.apply_ui_action(ui_action);
 
-impl App {
-    fn frame_dt(input: &mut InputState) -> f32 {
-        let now = Instant::now();
-        let dt = (now - input.last_frame).as_secs_f32().min(0.1);
-        input.last_frame = now;
-        dt
-    }
-
-    fn update_camera(_input: &InputState, _state: &mut State, _dt: f32) {
-    }
-
-    fn update_transform_operation(&mut self, mouse_pos: Vec2) {
-        let Some(operation) = self.transform_operation.clone() else { return; };
-        let Some(state) = self.state.as_ref() else { return; };
-        let delta = mouse_pos - operation.start_mouse_screen;
-
-        match operation.mode {
-            TransformMode::Translate => {
-                let units_per_pixel =
-                    2.0 * state.camera.distance
-                    * (state.camera.fovy * 0.5).tan()
-                    / self.viewport_size.y.max(1.0);
-                let world_delta_raw =
-                    state.camera.right() * delta.x * units_per_pixel
-                    - state.camera.up() * delta.y * units_per_pixel;
-                let world_delta = match operation.axis {
-                    Some(a) if a == Vec3::X => Vec3::new(world_delta_raw.x, 0.0, 0.0),
-                    Some(a) if a == Vec3::Y => Vec3::new(0.0, world_delta_raw.y, 0.0),
-                    Some(a) if a == Vec3::Z => Vec3::new(0.0, 0.0, world_delta_raw.z),
-                    _ => world_delta_raw,
-                };
-                let local_delta = if let Some(parent) = self.scene.world.get::<Parent>(operation.entity) {
-                    if let Some(parent_matrix) = self.scene.global_matrix(parent.0) {
-                        parent_matrix.inverse().transform_vector3(world_delta)
-                    } else { world_delta }
-                } else { world_delta };
-                if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
-                    transform.translation = operation.start_translation + local_delta;
+                    if self.pending_undo {
+                        self.pending_undo = false;
+                        self.do_undo();
+                    }
+                    if self.pending_redo {
+                        self.pending_redo = false;
+                        self.do_redo();
+                    }
                 }
-            }
-            TransformMode::Rotate => {
-                let mut angle = if operation.axis.is_some() {
-                    delta.x * 0.01
-                } else {
-                    let start_vec = operation.start_mouse_screen - operation.pivot_screen;
-                    let cur_vec = mouse_pos - operation.pivot_screen;
-                    let mut a = cur_vec.y.atan2(cur_vec.x) - start_vec.y.atan2(start_vec.x);
-                    if a > PI { a -= 2.0 * PI; }
-                    if a < -PI { a += 2.0 * PI; }
-                    a
-                };
-                if self.snap.enabled {
-                    let step = 15.0_f32.to_radians();
-                    angle = (angle / step).round() * step;
-                }
-                let axis = operation.axis.unwrap_or_else(|| state.camera.forward()).normalize();
-                let new_rot = Quat::from_axis_angle(axis, angle) * operation.start_rotation;
-                if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
-                    transform.rotation = new_rot;
-                }
-            }
-            TransformMode::Scale => {
-                let factor = (1.0 + delta.x * 0.01).max(0.01);
-                let new_scale = match operation.axis {
-                    Some(a) if a == Vec3::X => Vec3::new(operation.start_scale.x * factor, operation.start_scale.y, operation.start_scale.z),
-                    Some(a) if a == Vec3::Y => Vec3::new(operation.start_scale.x, operation.start_scale.y * factor, operation.start_scale.z),
-                    Some(a) if a == Vec3::Z => Vec3::new(operation.start_scale.x, operation.start_scale.y, operation.start_scale.z * factor),
-                    _ => operation.start_scale * factor,
-                };
-                if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
-                    transform.scale = new_scale;
-                }
+             _ => {}
             }
         }
-    }
 
-    fn do_undo(&mut self) {
-        if let Some(start) = self.edit_mode_history_start {
-            if self.history.pos <= start {
-                self.edit_mode = EditMode::Object;
-                self.edit_mode_history_start = None;
-                self.selected_elements.clear();
-                update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
-                if let Some(sel) = self.selected {
-                    update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, sel, &[]);
-                }
+        fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
+            if let Some(window) = &self.window { window.request_redraw(); }
+        }
+    }
+    
+
+    impl App {
+        fn frame_dt(input: &mut InputState) -> f32 {
+            let now = Instant::now();
+            let dt = (now - input.last_frame).as_secs_f32().min(0.1);
+            input.last_frame = now;
+            dt
+        }
+
+        fn update_camera(_input: &InputState, _state: &mut State, _dt: f32) {
+        }
+
+        fn update_transform_operation(&mut self, mouse_pos: Vec2) {
+            let Some(operation) = self.transform_operation.clone() else { return; };
+            let Some(state) = self.state.as_ref() else { return; };
+            let delta = mouse_pos - operation.start_mouse_screen;
+            if !operation.numeric_input.is_empty() {
                 return;
             }
+
+            match operation.mode {
+                TransformMode::Translate => {
+                    let units_per_pixel =
+                        2.0 * state.camera.distance
+                        * (state.camera.fovy * 0.5).tan()
+                        / self.viewport_size.y.max(1.0);
+                    let world_delta_raw =
+                        state.camera.right() * delta.x * units_per_pixel
+                        - state.camera.up() * delta.y * units_per_pixel;
+                    let world_delta = match operation.axis {
+                        Some(a) if a == Vec3::X => Vec3::new(world_delta_raw.x, 0.0, 0.0),
+                        Some(a) if a == Vec3::Y => Vec3::new(0.0, world_delta_raw.y, 0.0),
+                        Some(a) if a == Vec3::Z => Vec3::new(0.0, 0.0, world_delta_raw.z),
+                        _ => world_delta_raw,
+                    };
+                    let local_delta = if let Some(parent) = self.scene.world.get::<Parent>(operation.entity) {
+                        if let Some(parent_matrix) = self.scene.global_matrix(parent.0) {
+                            parent_matrix.inverse().transform_vector3(world_delta)
+                        } else { world_delta }
+                    } else { world_delta };
+                    if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
+                        transform.translation = operation.start_translation + local_delta;
+                    }
+                }
+                TransformMode::Rotate => {
+                    let mut angle = if operation.axis.is_some() {
+                        delta.x * 0.01
+                    } else {
+                        let start_vec = operation.start_mouse_screen - operation.pivot_screen;
+                        let cur_vec = mouse_pos - operation.pivot_screen;
+                        let mut a = cur_vec.y.atan2(cur_vec.x) - start_vec.y.atan2(start_vec.x);
+                        if a > PI { a -= 2.0 * PI; }
+                        if a < -PI { a += 2.0 * PI; }
+                        a
+                    };
+                    if self.snap.enabled {
+                        let step = 15.0_f32.to_radians();
+                        angle = (angle / step).round() * step;
+                    }
+                    let axis = operation.axis.unwrap_or_else(|| state.camera.forward()).normalize();
+                    let new_rot = Quat::from_axis_angle(axis, angle) * operation.start_rotation;
+                    if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
+                        transform.rotation = new_rot;
+                    }
+                }
+                TransformMode::Scale => {
+                    let factor = (1.0 + delta.x * 0.01).max(0.01);
+                    let new_scale = match operation.axis {
+                        Some(a) if a == Vec3::X => Vec3::new(operation.start_scale.x * factor, operation.start_scale.y, operation.start_scale.z),
+                        Some(a) if a == Vec3::Y => Vec3::new(operation.start_scale.x, operation.start_scale.y * factor, operation.start_scale.z),
+                        Some(a) if a == Vec3::Z => Vec3::new(operation.start_scale.x, operation.start_scale.y, operation.start_scale.z * factor),
+                        _ => operation.start_scale * factor,
+                    };
+                    if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity) {
+                        transform.scale = new_scale;
+                    }
+                }
+            }
         }
-        if self.history.can_undo() {
-            self.history.pos -= 1;
-            let snap = self.history.stack[self.history.pos].clone();
-            self.restore_snapshot(snap);
+
+        fn do_undo(&mut self) {
+            if let Some(start) = self.edit_mode_history_start {
+                if self.history.pos <= start {
+                    self.edit_mode = EditMode::Object;
+                    self.edit_mode_history_start = None;
+                    self.selected_elements.clear();
+                    update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
+                    if let Some(sel) = self.selected {
+                        update_object_mesh(self.state.as_mut().unwrap(), &self.scene, &self.render_map, sel, &[]);
+                    }
+                    return;
+                }
+            }
+            if self.history.can_undo() {
+                self.history.pos -= 1;
+                let snap = self.history.stack[self.history.pos].clone();
+                self.restore_snapshot(snap);
+                self.selected = None;
+                self.selected_elements.clear();
+                self.edit_handles.clear();
+                self.drag = None;
+                self.transform_operation = None;
+            }
+        }
+
+        fn do_redo(&mut self) {
+            if self.history.can_redo() {
+                self.history.pos += 1;
+                let snap = self.history.stack[self.history.pos].clone();
+                self.restore_snapshot(snap);
+                self.selected = None;
+                self.selected_elements.clear();
+                self.edit_handles.clear();
+                self.drag = None;
+                self.transform_operation = None;
+            }
+        }
+
+        fn restore_snapshot(&mut self, snap: SavedScene) {
+            let state = self.state.as_mut().unwrap();
+            for (_, idx) in &self.render_map { state.set_object_transform(*idx, Mat4::from_scale(Vec3::ZERO)); }
+            self.render_map.clear();
+            despawn_all(&mut self.scene);
+
+            let mut new_grid = None;
+            let mut new_cursor = None;
+            for node in snap.roots {
+                let is_grid = node.name == "Grid";
+                let is_cursor = node.name == "3D Cursor";
+                let e = spawn_saved_node(&mut self.scene, &mut self.render_map, state, node, None);
+                if is_grid { new_grid = Some(e); }
+                if is_cursor { new_cursor = Some(e); }
+            }
+            self.grid_entity = new_grid;
+            self.cursor_entity = new_cursor;
             self.selected = None;
-            self.selected_elements.clear();
-            self.edit_handles.clear();
             self.drag = None;
-            self.transform_operation = None;
-        }
-    }
-
-    fn do_redo(&mut self) {
-        if self.history.can_redo() {
-            self.history.pos += 1;
-            let snap = self.history.stack[self.history.pos].clone();
-            self.restore_snapshot(snap);
-            self.selected = None;
+            self.editing_entity = None;
             self.selected_elements.clear();
-            self.edit_handles.clear();
-            self.drag = None;
-            self.transform_operation = None;
+            update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
+            self.state.as_mut().unwrap().update_camera();
         }
-    }
 
-    fn restore_snapshot(&mut self, snap: SavedScene) {
-        let state = self.state.as_mut().unwrap();
-        for (_, idx) in &self.render_map { state.set_object_transform(*idx, Mat4::from_scale(Vec3::ZERO)); }
-        self.render_map.clear();
-        despawn_all(&mut self.scene);
-
-        let mut new_grid = None;
-        let mut new_cursor = None;
-        for node in snap.roots {
-            let is_grid = node.name == "Grid";
-            let is_cursor = node.name == "3D Cursor";
-            let e = spawn_saved_node(&mut self.scene, &mut self.render_map, state, node, None);
-            if is_grid { new_grid = Some(e); }
-            if is_cursor { new_cursor = Some(e); }
-        }
-        self.grid_entity = new_grid;
-        self.cursor_entity = new_cursor;
-        self.selected = None;
-        self.drag = None;
-        self.editing_entity = None;
-        self.selected_elements.clear();
-        update_edit_handles(self.state.as_mut().unwrap(), &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
-        self.state.as_mut().unwrap().update_camera();
-    }
-
-    fn frame_selected(&mut self) {
-        let Some(entity) = self.selected else { return; };
-        let Some(global_matrix) = self.scene.global_matrix(entity) else { return; };
-        let (center, radius) = {
-            if let Some(mesh) = self.scene.world.get::<CustomMesh>(entity) {
-                if mesh.vertices.is_empty() {
-                    (global_matrix.transform_point3(Vec3::ZERO), 0.5)
+        fn frame_selected(&mut self) {
+            let (center, radius) = if let Some(entity) = self.selected {
+                let Some(global_matrix) = self.scene.global_matrix(entity) else { return; };
+                if let Some(mesh) = self.scene.world.get::<CustomMesh>(entity) {
+                    if mesh.vertices.is_empty() {
+                        (global_matrix.transform_point3(Vec3::ZERO), 0.05)
+                    } else {
+                        let mut min = Vec3::splat(f32::INFINITY);
+                        let mut max = Vec3::splat(f32::NEG_INFINITY);
+                        for vertex in &mesh.vertices {
+                            let world_pos = global_matrix.transform_point3(*vertex);
+                            min = min.min(world_pos);
+                            max = max.max(world_pos);
+                        }
+                        let center = (min + max) * 0.5;
+                        let mut radius: f32 = 0.0;
+                        for vertex in &mesh.vertices {
+                            let world_pos = global_matrix.transform_point3(*vertex);
+                            radius = radius.max(world_pos.distance(center));
+                        }
+                        (center, radius.max(0.001))
+                    }
                 } else {
-                    let mut min = Vec3::splat(f32::INFINITY);
-                    let mut max = Vec3::splat(f32::NEG_INFINITY);
-                    for vertex in &mesh.vertices {
-                        let world_pos = global_matrix.transform_point3(*vertex);
-                        min = min.min(world_pos);
-                        max = max.max(world_pos);
-                    }
-                    let center = (min + max) * 0.5;
-                    let mut radius: f32 = 0.0;
-                    for vertex in &mesh.vertices {
-                        let world_pos = global_matrix.transform_point3(*vertex);
-                        radius = radius.max(world_pos.distance(center));
-                    }
-                    (center, radius.max(0.5))
+                    (global_matrix.transform_point3(Vec3::ZERO), 0.05)
                 }
             } else {
-                (global_matrix.transform_point3(Vec3::ZERO), 0.5)
-            }
-        };
-        let state = self.state.as_mut().unwrap();
-        state.camera.frame_sphere(center, radius);
-        state.update_camera();
-    }
+                // Frame the grid (1m plane)
+                let grid_radius = 0.75; // 750mm to fit the 1m plane
+                (Vec3::ZERO, grid_radius)
+            };
+            let state = self.state.as_mut().unwrap();
+            state.camera.frame_sphere(center, radius);
+            state.update_camera();
+        }
 
-    fn apply_ui_action(&mut self, action: UiAction) {
-        let Some(state) = self.state.as_mut() else { return };
-        match action {
-            UiAction::None => {}
-            UiAction::Save => { let _ = save_scene(&mut self.scene, SAVE_PATH); }
-            UiAction::SaveAs => {
-                if !self.save_as_path.is_empty() {
-                    let _ = save_scene(&mut self.scene, &self.save_as_path);
-                }
-            }
-            UiAction::Undo => self.do_undo(),
-            UiAction::Redo => self.do_redo(),
-            UiAction::SetMode(m) => self.transform_mode = m,
-            UiAction::ConfirmDelete => {
-                if let Some(e) = self.selected {
-                    if self.scene.world.get::<Locked>(e).is_none() {
-                        self.selected = None;
-                        self.selected_elements.clear();
-                        if self.edit_mode == EditMode::Edit {
-                            self.edit_mode = EditMode::Object;
-                            self.edit_mode_history_start = None;
-                            update_edit_handles(state, &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
-                        } else {
-                            self.edit_handles.clear();
-                        }
-                        delete_entity(&mut self.scene, &mut self.render_map, state, e);
-                        self.history.record(capture_snapshot(&mut self.scene));
+        fn apply_ui_action(&mut self, action: UiAction) {
+            let Some(state) = self.state.as_mut() else { return };
+            match action {
+                UiAction::None => {}
+                UiAction::Save => { let _ = save_scene(&mut self.scene, SAVE_PATH); }
+                UiAction::SaveAs => {
+                    if !self.save_as_path.is_empty() {
+                        let _ = save_scene(&mut self.scene, &self.save_as_path);
                     }
                 }
-            }
-            UiAction::CancelDelete => {
-                self.delete_confirm = false;
-            }
-            UiAction::CopySelected => {
-                if let Some(sel) = self.selected {
-                    let snap = capture_selected(&mut self.scene, sel);
-                    self.clipboard = Some(snap);
-                }
-            }
-            UiAction::PasteSelected => {
-                if let Some(snap) = &self.clipboard {
-                    let state = self.state.as_mut().unwrap();
-                    let offset = Vec3::new(2.0, 2.0, 0.0);
-                    for root in &snap.roots {
-                        paste_node(&mut self.scene, &mut self.render_map, state, root, None, offset);
-                    }
-                    self.selected = None;
-                    self.selected_elements.clear();
-                    update_edit_handles(state, &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
-                }
-            }
-            UiAction::SetOriginToCursorConfirmed => {
-                if let (Some(sel), Some(cursor_e)) = (self.selected, self.cursor_entity) {
-                    let cursor_pos = self.scene.global_matrix(cursor_e).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
-                    let obj_pos = self.scene.global_matrix(sel).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
-                    let delta = cursor_pos - obj_pos;
-                    if let Some(p) = self.scene.world.get::<Parent>(sel) {
-                        if let Some(pg) = self.scene.global_matrix(p.0) {
-                            let local_delta = pg.inverse().transform_vector3(delta);
-                            if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
-                                t.pivot_offset += local_delta;
-                                t.translation += local_delta;
+                UiAction::Undo => self.do_undo(),
+                UiAction::Redo => self.do_redo(),
+                UiAction::SetMode(m) => self.transform_mode = m,
+                UiAction::ConfirmDelete => {
+                    if let Some(e) = self.selected {
+                        if self.scene.world.get::<Locked>(e).is_none() {
+                            self.selected = None;
+                            self.selected_elements.clear();
+                            if self.edit_mode == EditMode::Edit {
+                                self.edit_mode = EditMode::Object;
+                                self.edit_mode_history_start = None;
+                                update_edit_handles(state, &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
+                            } else {
+                                self.edit_handles.clear();
                             }
-                        }
-                    } else {
-                        if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
-                            t.pivot_offset += delta;
-                            t.translation += delta;
+                            delete_entity(&mut self.scene, &mut self.render_map, state, e);
+                            self.history.record(capture_snapshot(&mut self.scene));
                         }
                     }
-                    self.history.record(capture_snapshot(&mut self.scene));
                 }
-            }
-            UiAction::LoadGcode => {
-                const GCODE_PATH: &str = "C:/project/cnc-simulator/test.nc";
-                match std::fs::read_to_string(GCODE_PATH) {
-                    Ok(source) => {
-                        let prog = engine_core::gcode::GCodeProgram::parse(&source);
-                        println!("G-code loaded: {} segments, {} errors", prog.segments.len(), prog.errors.len());
-                        for e in prog.errors.iter().take(5) { println!("  {}", e); }
-                        if let (Some(first), Some(last)) = (prog.segments.first(), prog.segments.last()) {
-                            println!("  from {:?} to {:?}", first.from, last.to);
-                        }
-                        self.gcode = prog;
+                UiAction::CancelDelete => {
+                    self.delete_confirm = false;
+                }
+                UiAction::CopySelected => {
+                    if let Some(sel) = self.selected {
+                        let snap = capture_selected(&mut self.scene, sel);
+                        self.clipboard = Some(snap);
                     }
-                    Err(e) => eprintln!("Failed to read {}: {}", GCODE_PATH, e),
                 }
-            }
-            UiAction::Load => {
-                if std::path::PathBuf::from(SAVE_PATH).exists() {
-                    if let Ok((grid, cursor)) = load_scene(&mut self.scene, &mut self.render_map, state, SAVE_PATH) {
-                        self.grid_entity = Some(grid);
-                        self.cursor_entity = Some(cursor);
+                UiAction::PasteSelected => {
+                    if let Some(snap) = &self.clipboard {
+                        let state = self.state.as_mut().unwrap();
+                        let offset = Vec3::new(2.0, 2.0, 0.0);
+                        for root in &snap.roots {
+                            paste_node(&mut self.scene, &mut self.render_map, state, root, None, offset);
+                        }
                         self.selected = None;
-                        self.drag = None;
-                        self.editing_entity = None;
-                        self.edit_mode = EditMode::Object;
                         self.selected_elements.clear();
                         update_edit_handles(state, &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
-                        let snap = capture_snapshot(&mut self.scene);
-                        self.history.record(snap);
                     }
                 }
-            }
-            UiAction::AddCube => {
-                let parent = self.selected.or(self.grid_entity);
-                let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Cube, parent);
-                self.selected = Some(e);
-                self.history.record(capture_snapshot(&mut self.scene));
-            }
-            UiAction::AddPlane => {
-                let parent = self.selected.or(self.grid_entity);
-                let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Plane, parent);
-                self.selected = Some(e);
-                self.history.record(capture_snapshot(&mut self.scene));
-            }
-            UiAction::AddCylinder => {
-                let parent = self.selected.or(self.grid_entity);
-                let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Cylinder, parent);
-                self.selected = Some(e);
-                self.history.record(capture_snapshot(&mut self.scene));
-            }
-            UiAction::AddSphere => {
-                let parent = self.selected.or(self.grid_entity);
-                let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Sphere, parent);
-                self.selected = Some(e);
-                self.history.record(capture_snapshot(&mut self.scene));
-            }
-            UiAction::AddPyramid => {
-                let parent = self.selected.or(self.grid_entity);
-                let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Pyramid, parent);
-                self.selected = Some(e);
-                self.history.record(capture_snapshot(&mut self.scene));
-            }
-            UiAction::DeleteSelected => {
-                if self.selected.is_some() {
-                    self.delete_confirm = true;
-                    self.delete_confirm_pos = Vec2::new(640.0, 360.0);
-                }
-            }
-            UiAction::SetOriginToCursor => {
-                if let Some(sel) = self.selected {
-                    if let Some(cursor_e) = self.cursor_entity {
+                UiAction::SetOriginToCursorConfirmed => {
+                    if let (Some(sel), Some(cursor_e)) = (self.selected, self.cursor_entity) {
                         let cursor_pos = self.scene.global_matrix(cursor_e).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
                         let obj_pos = self.scene.global_matrix(sel).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
                         let delta = cursor_pos - obj_pos;
@@ -1600,17 +1749,107 @@ impl App {
                         self.history.record(capture_snapshot(&mut self.scene));
                     }
                 }
-            }
-            UiAction::SetOriginToGeometry => {
-                if let Some(sel) = self.selected {
-                    if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
-                        let offset = t.pivot_offset;
-                        t.translation += offset;
-                        t.pivot_offset = Vec3::ZERO;
+                UiAction::LoadGcode => {
+                    const GCODE_PATH: &str = "C:/project/cnc-simulator/test.nc";
+                    match std::fs::read_to_string(GCODE_PATH) {
+                        Ok(source) => {
+                            let prog = engine_core::gcode::GCodeProgram::parse(&source);
+                            println!("G-code loaded: {} segments, {} errors", prog.segments.len(), prog.errors.len());
+                            for e in prog.errors.iter().take(5) { println!("  {}", e); }
+                            if let (Some(first), Some(last)) = (prog.segments.first(), prog.segments.last()) {
+                                println!("  from {:?} to {:?}", first.from, last.to);
+                            }
+                            self.gcode = prog;
+                        }
+                        Err(e) => eprintln!("Failed to read {}: {}", GCODE_PATH, e),
                     }
+                }
+                UiAction::Load => {
+                    if std::path::PathBuf::from(SAVE_PATH).exists() {
+                        if let Ok((grid, cursor)) = load_scene(&mut self.scene, &mut self.render_map, state, SAVE_PATH) {
+                            self.grid_entity = Some(grid);
+                            self.cursor_entity = Some(cursor);
+                            self.selected = None;
+                            self.drag = None;
+                            self.editing_entity = None;
+                            self.edit_mode = EditMode::Object;
+                            self.selected_elements.clear();
+                            update_edit_handles(state, &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
+                            let snap = capture_snapshot(&mut self.scene);
+                            self.history.record(snap);
+                        }
+                    }
+                }
+                UiAction::AddCube => {
+                    let parent = self.selected.or(self.grid_entity);
+                    let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Cube, parent);
+                    self.selected = Some(e);
                     self.history.record(capture_snapshot(&mut self.scene));
+                }
+                UiAction::AddPlane => {
+                    let parent = self.selected.or(self.grid_entity);
+                    let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Plane, parent);
+                    self.selected = Some(e);
+                    self.history.record(capture_snapshot(&mut self.scene));
+                }
+                UiAction::AddCylinder => {
+                    let parent = self.selected.or(self.grid_entity);
+                    let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Cylinder, parent);
+                    self.selected = Some(e);
+                    self.history.record(capture_snapshot(&mut self.scene));
+                }
+                UiAction::AddSphere => {
+                    let parent = self.selected.or(self.grid_entity);
+                    let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Sphere, parent);
+                    self.selected = Some(e);
+                    self.history.record(capture_snapshot(&mut self.scene));
+                }
+                UiAction::AddPyramid => {
+                    let parent = self.selected.or(self.grid_entity);
+                    let e = add_mesh_node(&mut self.scene, &mut self.render_map, state, MeshKind::Pyramid, parent);
+                    self.selected = Some(e);
+                    self.history.record(capture_snapshot(&mut self.scene));
+                }
+                UiAction::DeleteSelected => {
+                    if self.selected.is_some() {
+                        self.delete_confirm = true;
+                        self.delete_confirm_pos = Vec2::new(640.0, 360.0);
+                    }
+                }
+                UiAction::SetOriginToCursor => {
+                    if let Some(sel) = self.selected {
+                        if let Some(cursor_e) = self.cursor_entity {
+                            let cursor_pos = self.scene.global_matrix(cursor_e).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
+                            let obj_pos = self.scene.global_matrix(sel).map(|m| m.w_axis.truncate()).unwrap_or(Vec3::ZERO);
+                            let delta = cursor_pos - obj_pos;
+                            if let Some(p) = self.scene.world.get::<Parent>(sel) {
+                                if let Some(pg) = self.scene.global_matrix(p.0) {
+                                    let local_delta = pg.inverse().transform_vector3(delta);
+                                    if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
+                                        t.pivot_offset += local_delta;
+                                        t.translation += local_delta;
+                                    }
+                                }
+                            } else {
+                                if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
+                                    t.pivot_offset += delta;
+                                    t.translation += delta;
+                                }
+                            }
+                            self.history.record(capture_snapshot(&mut self.scene));
+                        }
+                    }
+                }
+                UiAction::SetOriginToGeometry => {
+                    if let Some(sel) = self.selected {
+                        if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
+                            let offset = t.pivot_offset;
+                            t.translation += offset;
+                            t.pivot_offset = Vec3::ZERO;
+                        }
+                        self.history.record(capture_snapshot(&mut self.scene));
+                    }
                 }
             }
         }
     }
-}

@@ -124,7 +124,6 @@ pub struct TransformOperation {
     // Параметры взаимодействия с мышью.
     pub start_mouse_screen: Vec2,
     pub pivot_screen: Vec2,
-    pub screen_axis_dir: Vec2,
 
     // Числовой ввод.
     pub numeric_input: String,
@@ -133,8 +132,8 @@ pub struct TransformOperation {
 
 pub enum UiAction {
     None, Save, SaveAs, Load, AddCube, AddPlane, AddCylinder, AddSphere, AddPyramid, LoadGcode,
-    DeleteSelected, Undo, Redo, SetMode(TransformMode), SetOriginToCursor, SetOriginToGeometry,
-    ConfirmDelete, CancelDelete, CopySelected, PasteSelected,
+    Undo, Redo, SetMode(TransformMode), SetOriginToCursor, SetOriginToGeometry,
+    ConfirmDelete, CopySelected, PasteSelected, CancelDelete, DeleteSelected,
     SetOriginToCursorConfirmed,
 }
 

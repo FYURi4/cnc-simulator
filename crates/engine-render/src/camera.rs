@@ -38,7 +38,8 @@ impl Camera {
     }
 
     pub fn new(aspect: f32) -> Self {
-        let position = Vec3::new(6.0, 5.0, 6.0);
+        // Camera positioned for mm-scale work (100mm objects)
+        let position = Vec3::new(0.15, 0.12, 0.15);
         let target = Vec3::ZERO;
 
         let direction = (target - position).normalize();
@@ -53,8 +54,8 @@ impl Camera {
             pitch,
             aspect,
             fovy: 60.0_f32.to_radians(),
-            znear: 0.1,
-            zfar: 1000.0,
+            znear: 0.001,
+            zfar: 100.0,
         }
     }
 
@@ -181,7 +182,7 @@ impl Camera {
 
     pub fn reset(&mut self) {
         self.target = Vec3::ZERO;
-        self.position = Vec3::new(6.0, 5.0, 6.0);
+        self.position = Vec3::new(0.15, 0.12, 0.15);
 
         let direction = (self.target - self.position).normalize();
         self.yaw = direction.z.atan2(direction.x);
