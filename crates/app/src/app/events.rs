@@ -1,23 +1,17 @@
 use std::sync::Arc;
-use anyhow::Result;
-use bevy_ecs::prelude::*;
-use glam::{Mat4, Quat, Vec2, Vec3};
+use glam::Vec2;
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
+    event::{MouseScrollDelta, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
-use engine_core::{Parent, Scene, Transform};
-use engine_render::mesh::{MeshKind, Vertex};
 use engine_render::state::State;
-use crate::types::*;
-use crate::geometry::*;
-use crate::editor::*;
-use crate::io::*;
-use crate::ui::*;
-use super::App;
+use crate::app::App;
+use crate::editor::create_gizmo_objects;
+use crate::io::{build_default_scene, capture_snapshot};
+
 mod keyboard;
 mod pointer;
 
