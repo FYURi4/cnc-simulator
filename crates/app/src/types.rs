@@ -101,6 +101,7 @@ pub struct DragState {
     pub start_mouse_screen: Vec2,
     pub pivot_screen: Vec2,
     pub screen_axis_dir: Vec2,
+    pub axis_world_length: f32,
     pub start_translation: Vec3,
     pub start_rotation: Quat,
     pub start_scale: Vec3,
@@ -124,6 +125,7 @@ pub struct TransformOperation {
     // Параметры взаимодействия с мышью.
     pub start_mouse_screen: Vec2,
     pub pivot_screen: Vec2,
+    pub pivot_world: Vec3,
 
     // Числовой ввод.
     pub numeric_input: String,
