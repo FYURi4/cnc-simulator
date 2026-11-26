@@ -256,8 +256,8 @@ impl State {
             grid_color: [0.5, 0.5, 0.5],
             grid_visible: true,
             grid_type: 0.0,
-            grid_step_x: 0.001, // 1mm
-            grid_step_y: 0.001, // 1mm
+            grid_step_x: 0.005, // 1mm
+            grid_step_y: 0.005, // 1mm
             objects: Vec::new(),
             window,
             egui_ctx,
@@ -368,6 +368,13 @@ impl State {
     }
 
     pub fn update_camera(&mut self) {
+        let camera_distance = self.camera.position.distance(self.camera.target).max(1e-5);
+        // Keep the near plane small for close-up CAD work and extend the far
+        // plane to cover the configured grid and distant scene objects.
+        self.camera.znear = (camera_distance * 0.001).clamp(1e-6, 0.01);
+        self.camera.zfar = (self.grid_extent * 2.0)
+            .max(camera_distance * 100.0)
+            .max(10.0);
         let mut uniform = CameraUniform::from_camera(&self.camera, self.grid_color, self.grid_type, self.grid_visible, self.grid_step_x, self.grid_step_y);
         uniform.grid_extent = self.grid_extent;
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));
