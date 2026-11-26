@@ -27,8 +27,6 @@ impl App {
                     let edit_m = self.edit_mode;
                     let sel_m = self.select_mode;
                     let sel_tool = self.select_tool;
-                    let can_undo = self.history.can_undo();
-                    let can_redo = self.history.can_redo();
                     let cursor_e = self.cursor_entity;
                     let snap = &mut self.snap;
                     let mut ui_sel_m = self.select_mode;
