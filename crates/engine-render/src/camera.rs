@@ -1,7 +1,7 @@
 
 use glam::{Mat4, Vec2, Vec3};
 
-const MIN_DISTANCE: f32 = 0.05;
+const MIN_DISTANCE: f32 = 0.00001;
 const MAX_DISTANCE: f32 = 100_000.0;
 
 pub struct Camera {
@@ -29,7 +29,7 @@ impl Camera {
 
         self.target = center;
 
-        let safe_radius = radius.max(0.05);
+        let safe_radius = radius.max(0.00001);
         self.distance = (
             safe_radius / half_fov.sin() * 1.25
         ).clamp(MIN_DISTANCE, MAX_DISTANCE);
@@ -54,7 +54,7 @@ impl Camera {
             pitch,
             aspect,
             fovy: 60.0_f32.to_radians(),
-            znear: 0.001,
+            znear: 0.00001,
             zfar: 100.0,
         }
     }
