@@ -3,14 +3,7 @@ use crate::app::{App, ViewDirection};
 use crate::types::{GridUnit, GridType, SnapTarget, SnapSettings, UiAction};
 
 impl App {
-    pub(super) fn draw_top_bar(
-        &mut self,
-        ctx: &egui::Context,
-        ui_action: &mut UiAction,
-        grid_extent_ui: &mut f32,
-        ui_view: &mut ViewDirection,
-        snap: &mut SnapSettings,
-    ) {
+    pub(super) fn draw_top_bar(&mut self, ctx: &egui::Context, ui_action: &mut UiAction, grid_extent_ui: &mut f32, ui_view: &mut ViewDirection, snap: &mut SnapSettings) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
                             egui::MenuBar::new().ui(ui, |ui| {
                                 ui.menu_button("File", |ui| {
