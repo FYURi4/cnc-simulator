@@ -256,8 +256,8 @@ impl State {
             grid_color: [0.5, 0.5, 0.5],
             grid_visible: true,
             grid_type: 0.0,
-            grid_step_x: 0.005, // 1mm
-            grid_step_y: 0.005, // 1mm
+            grid_step_x: 0.005, // 5mm
+            grid_step_y: 0.005, // 5mm
             objects: Vec::new(),
             window,
             egui_ctx,
