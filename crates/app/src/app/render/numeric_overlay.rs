@@ -8,7 +8,7 @@ impl App {
                                 .order(egui::Order::Foreground)
                                 .fixed_pos(egui::pos2(
                                     (viewport_size.x * 0.5 - 110.0).max(8.0),
-                                    (self.viewport_size.y - 76.0).max(8.0),
+                                    (viewport_size.y - 76.0).max(8.0),
                                 ))
                                 .show(ctx, |ui| {
                                     egui::Frame::popup(ui.style()).show(ui, |ui| {
