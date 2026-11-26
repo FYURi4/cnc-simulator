@@ -1,7 +1,6 @@
-use std::collections::HashSet;
 use glam::{Mat4, Quat, Vec2, Vec3};
 use bevy_ecs::prelude::*;
-use winit::event::{ElementState, MouseButton};
+use winit::{dpi::PhysicalPosition, event::{ElementState, MouseButton}};
 use engine_core::{Parent, Transform};
 use engine_render::mesh::MeshKind;
 use crate::app::App;
@@ -11,7 +10,7 @@ use crate::io::*;
 use crate::types::*;
 
 impl App {
-    pub(super) fn handle_cursor_moved(&mut self, new_pos: Vec2) {
+    pub(super) fn handle_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
                 let new_pos = Vec2::new(position.x as f32, position.y as f32);
                 let delta = new_pos - self.input.cursor_pos;
                 self.input.cursor_pos = new_pos;
