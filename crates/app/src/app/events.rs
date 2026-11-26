@@ -19,6 +19,7 @@ use crate::io::*;
 use crate::ui::*;
 use super::App;
 mod keyboard;
+mod pointer;
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -58,7 +59,7 @@ impl ApplicationHandler for App {
                 state.resize(size);
                 state.update_camera();
             }
-            WindowEvent::CursorMoved { position, .. } => {
+            WindowEvent::CursorMoved { position, .. } => self.handle_cursor_moved(Vec2::new(position.x as f32, position.y as f32)), => {
                 let new_pos = Vec2::new(position.x as f32, position.y as f32);
                 let delta = new_pos - self.input.cursor_pos;
                 self.input.cursor_pos = new_pos;
@@ -464,7 +465,7 @@ impl ApplicationHandler for App {
                     }
                 }
                 }
-                WindowEvent::MouseInput { state: btn_state, button, .. } => {
+                WindowEvent::MouseInput { state: btn_state, button, .. } => self.handle_mouse_input(btn_state, button), => {
                     match button {
                         MouseButton::Left => {
                             if btn_state == ElementState::Pressed {
