@@ -1249,6 +1249,27 @@ impl ApplicationHandler for App {
 
                                                 if let Some(mut t) = scene.world.get_mut::<Transform>(sel) {
                                                     ui.label("Transform:");
+                                                    ui.label("Scale");
+                                                    egui::Grid::new("scale_grid").show(ui, |ui| {
+ui.label("Scale X");
+                                                        let r = ui.add(egui::DragValue::new(&mut t.scale.x).speed(0.01).range(0.0001..=100000.0));
+                                                        ui.label(format!("{:.3}", t.scale.x));
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                        ui.end_row();
+
+                                                        ui.label("Scale Y");
+                                                        let r = ui.add(egui::DragValue::new(&mut t.scale.y).speed(0.01).range(0.0001..=100000.0));
+                                                        ui.label(format!("{:.3}", t.scale.y));
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                        ui.end_row();
+
+                                                        ui.label("Scale Z");
+                                                        let r = ui.add(egui::DragValue::new(&mut t.scale.z).speed(0.01).range(0.0001..=100000.0));
+                                                        ui.label(format!("{:.3}", t.scale.z));
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                        ui.end_row();
+                                                    });
+                                                    ui.separator();
                                                     egui::Grid::new("transform_grid").show(ui, |ui| {
                                                         ui.label("Location X");
                                                         let r = ui.add(egui::DragValue::new(&mut t.translation.x).speed(drag_speed));
@@ -1321,23 +1342,7 @@ impl ApplicationHandler for App {
                                                             );
                                                         }
 
-                                                        ui.label("Scale X");
-                                                        let r = ui.add(egui::DragValue::new(&mut t.scale.x).speed(0.01).range(0.0001..=100000.0));
-                                                        ui.label(format!("{:.3}", t.scale.x));
-                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                        ui.end_row();
-
-                                                        ui.label("Scale Y");
-                                                        let r = ui.add(egui::DragValue::new(&mut t.scale.y).speed(0.01).range(0.0001..=100000.0));
-                                                        ui.label(format!("{:.3}", t.scale.y));
-                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                        ui.end_row();
-
-                                                        ui.label("Scale Z");
-                                                        let r = ui.add(egui::DragValue::new(&mut t.scale.z).speed(0.01).range(0.0001..=100000.0));
-                                                        ui.label(format!("{:.3}", t.scale.z));
-                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
-                                                        ui.end_row();
+                                                        
                                                     });
                                                 }
                                             }
