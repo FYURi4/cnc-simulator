@@ -22,7 +22,7 @@ pub fn add_mesh_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, s
                 glam::Vec3::new(h, -h, -h), glam::Vec3::new(-h, -h, -h), glam::Vec3::new(-h, h, -h), glam::Vec3::new(h, h, -h),
             ]
         },
-        // 1000mm = 1m plane
+        // 1000 m plane covers the maximum 500 m grid radius.
         MeshKind::Plane => {
             let h = 0.5; // 500mm half-extent = 1000mm plane
             vec![
@@ -99,7 +99,7 @@ pub fn paste_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, stat
         if let Some(cm) = &node.custom_mesh {
             scene.world.entity_mut(e).insert(cm.clone());
         }
-        let mesh = if is_grid { Mesh::plane(&state.device, 1.0) } else { kind.create(&state.device) };
+        let mesh = if is_grid { Mesh::plane(&state.device, 1000.0) } else { kind.create(&state.device) };
         let idx = state.add_object(mesh, obj_kind, Some(kind));
         if is_cursor { state.set_object_tint(idx, [1.0, 0.2, 0.2, 1.0]); }
         render_map.push((e, idx));
@@ -182,8 +182,8 @@ pub fn spawn_saved_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>
         if let Some(cm) = node.custom_mesh {
             scene.world.entity_mut(e).insert(cm);
         }
-        // Grid plane must be 1.0 (1000mm) to match initial creation; other meshes use default sizes
-        let mesh = if is_grid { Mesh::plane(&state.device, 1.0) } else { kind.create(&state.device) };
+        // Keep the grid mesh large enough for the full 500 m grid-extent setting.
+        let mesh = if is_grid { Mesh::plane(&state.device, 1000.0) } else { kind.create(&state.device) };
         let idx = state.add_object(mesh, obj_kind, Some(kind));
         if is_cursor { state.set_object_tint(idx, [1.0, 0.2, 0.2, 1.0]); }
         render_map.push((e, idx));
