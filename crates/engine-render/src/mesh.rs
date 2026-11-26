@@ -385,8 +385,8 @@ impl Mesh {
         let mut vertices: Vec<Vertex> = Vec::new();
         let mut indices: Vec<u16> = Vec::new();
 
-        let major_r = 0.2f32;
-        let minor_r = 0.015f32;
+        let major_r = 0.1f32;
+        let minor_r = 0.008f32;
         let major_seg: u16 = 32;
         let minor_seg: u16 = 6;
 
@@ -417,7 +417,7 @@ impl Mesh {
         let mut add_line = |p1: Vec3, p2: Vec3, up: Vec3| {
             let dir = (p2 - p1).normalize();
             let right = dir.cross(up).normalize();
-            let thick = 0.01;
+            let thick = 0.005;
             let off = right * thick;
             let base = vertices.len() as u16;
             vertices.push(Vertex { position: (p1 - off).into(), normal: [0.0, 1.0, 0.0], uv: [0.0, 0.0], color: [1.0; 3] });
@@ -428,10 +428,10 @@ impl Mesh {
         };
 
         let y = Vec3::Y;
-        add_line(Vec3::new(-0.4, 0.0, 0.0), Vec3::new(-0.2, 0.0, 0.0), y);
-        add_line(Vec3::new(0.2, 0.0, 0.0), Vec3::new(0.4, 0.0, 0.0), y);
-        add_line(Vec3::new(0.0, 0.0, -0.4), Vec3::new(0.0, 0.0, -0.2), y);
-        add_line(Vec3::new(0.0, 0.0, 0.2), Vec3::new(0.0, 0.0, 0.4), y);
+        add_line(Vec3::new(-0.2, 0.0, 0.0), Vec3::new(-0.1, 0.0, 0.0), y);
+        add_line(Vec3::new(0.1, 0.0, 0.0), Vec3::new(0.2, 0.0, 0.0), y);
+        add_line(Vec3::new(0.0, 0.0, -0.2), Vec3::new(0.0, 0.0, -0.1), y);
+        add_line(Vec3::new(0.0, 0.0, 0.1), Vec3::new(0.0, 0.0, 0.2), y);
 
         use wgpu::util::DeviceExt;
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
