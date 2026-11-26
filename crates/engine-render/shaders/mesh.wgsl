@@ -57,10 +57,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     );
     let minor = 1.0 - clamp(d, 0.0, 1.0);
 
-    // Major grid (15mm = 0.015m)
-    let major_step = 0.015;
-    let coord10_x = in.world_pos.x / major_step;
-    let coord10_y = in.world_pos.z / major_step;
+    // Major lines every five minor grid cells (25 mm at the default 5 mm step).
+    let major_step_x = step_x * 5.0;
+    let major_step_y = step_y * 5.0;
+    let coord10_x = in.world_pos.x / major_step_x;
+    let coord10_y = in.world_pos.z / major_step_y;
     let d10 = min(
         abs(fract(coord10_x - 0.5) - 0.5) / fwidth(coord10_x),
         abs(fract(coord10_y - 0.5) - 0.5) / fwidth(coord10_y)
