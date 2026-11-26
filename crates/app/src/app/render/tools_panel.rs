@@ -3,16 +3,7 @@ use crate::app::App;
 use crate::types::{EditMode, TransformMode, SelectMode, SelectTool, UiAction};
 
 impl App {
-    pub(super) fn draw_tools_panel(
-        ctx: &egui::Context,
-        edit_m: EditMode,
-        mode: TransformMode,
-        sel_m: SelectMode,
-        sel_tool: SelectTool,
-        ui_action: &mut UiAction,
-        ui_sel_m: &mut SelectMode,
-        ui_sel_tool: &mut SelectTool,
-    ) {
+    pub(super) fn draw_tools_panel(ctx: &egui::Context, edit_m: EditMode, mode: TransformMode, sel_m: SelectMode, sel_tool: SelectTool, ui_action: &mut UiAction, ui_sel_m: &mut SelectMode, ui_sel_tool: &mut SelectTool) {
         egui::SidePanel::left("tools")
                             .resizable(false)
                             .exact_width(40.0)
