@@ -1,6 +1,7 @@
 use glam::{Mat4, Vec3};
 use crate::app::App;
 use crate::editor::*;
+use crate::geometry::*;
 use crate::types::*;
 
 impl App {
