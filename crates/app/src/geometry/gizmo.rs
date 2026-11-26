@@ -5,6 +5,7 @@ use engine_core::Scene;
 use engine_render::mesh::{Mesh, MeshKind, Vertex};
 use engine_render::state::{ObjectKind, State};
 use crate::types::*;
+use super::ray_aabb;
 pub fn gizmo_axis_rotation(axis_index: usize) -> Quat {
     let axis = match axis_index {
         0 => Vec3::X,
