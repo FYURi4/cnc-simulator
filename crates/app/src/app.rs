@@ -1250,7 +1250,7 @@ impl ApplicationHandler for App {
                                                 if let Some(mut t) = scene.world.get_mut::<Transform>(sel) {
                                                     ui.label("Transform:");
                                                     ui.label("Scale");
-                                                    egui::Grid::new("scale_grid").show(ui, |ui| {
+                                                    egui::Grid::new("scale_grid").num_columns(3).show(ui, |ui| {
 ui.label("Scale X");
                                                         let r = ui.add(egui::DragValue::new(&mut t.scale.x).speed(0.01).range(0.0001..=100000.0));
                                                         ui.label(format!("{:.3}", t.scale.x));
