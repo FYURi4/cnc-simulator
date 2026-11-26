@@ -18,6 +18,7 @@ use crate::editor::*;
 use crate::io::*;
 use crate::ui::*;
 use super::App;
+mod keyboard;
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -168,7 +169,7 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            WindowEvent::KeyboardInput { ref event, .. } => {
+            WindowEvent::KeyboardInput { ref event, .. } => self.handle_keyboard_input(event), => {
                 if let PhysicalKey::Code(code) = event.physical_key {
                     match event.state {
                         ElementState::Pressed => {
