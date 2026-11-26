@@ -1,6 +1,6 @@
 use egui;
 use crate::app::{App, ViewDirection};
-use crate::types::{GridUnit, GridType, SnapTarget, SnapSettings, UiAction};
+use crate::types::{GridUnit, GridType, GridSettings, SnapTarget, SnapSettings, UiAction};
 
 impl App {
     pub(super) fn draw_top_bar(ctx: &egui::Context, ui_action: &mut UiAction, grid_extent_ui: &mut f32, ui_view: &mut ViewDirection, snap: &mut SnapSettings, grid_settings: &mut GridSettings, show_save_as: &mut bool, show_color_picker: &mut bool, color_picker_hex: &mut String, selected: Option<bevy_ecs::prelude::Entity>) {
