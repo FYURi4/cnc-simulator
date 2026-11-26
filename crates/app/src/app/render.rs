@@ -4,6 +4,8 @@ use engine_core::Scene;
 use engine_render::mesh::Vertex;
 use crate::app::App;
 mod scene;
+mod top_bar;
+mod tools_panel;
 use crate::editor::*;
 use crate::io::capture_snapshot;
 use crate::types::*;
@@ -80,124 +82,9 @@ impl App {
                                 });
                         }
 
-                        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-                            egui::MenuBar::new().ui(ui, |ui| {
-                                ui.menu_button("File", |ui| {
-                                    if ui.button("💾 Save").clicked() { ui_action = UiAction::Save; ui.close(); }
-                                    if ui.button("💾 Save As...").clicked() { self.show_save_as = true; ui.close(); }
-                                    if ui.button("📂 Load").clicked() { ui_action = UiAction::Load; ui.close(); }
-                                    if ui.button("⚙ Load G-code").clicked() { ui_action = UiAction::LoadGcode; ui.close(); }
-                                });
-                                ui.menu_button("Add", |ui| {
-                                    if ui.button("Cube").clicked() { ui_action = UiAction::AddCube; ui.close(); }
-                                    if ui.button("Plane").clicked() { ui_action = UiAction::AddPlane; ui.close(); }
-                                    if ui.button("Cylinder").clicked() { ui_action = UiAction::AddCylinder; ui.close(); }
-                                    if ui.button("Sphere").clicked() { ui_action = UiAction::AddSphere; ui.close(); }
-                                    if ui.button("Pyramid").clicked() { ui_action = UiAction::AddPyramid; ui.close(); }
-                                });
-                                ui.menu_button("Edit", |ui| {
-                                    if ui.button("Undo (Ctrl+Z)").clicked() { ui_action = UiAction::Undo; ui.close(); }
-                                    if ui.button("Redo (Ctrl+Y)").clicked() { ui_action = UiAction::Redo; ui.close(); }
-                                    ui.separator();
-                                    if ui.button("Copy (Ctrl+C)").clicked() { ui_action = UiAction::CopySelected; ui.close(); }
-                                    if ui.button("Paste (Ctrl+V)").clicked() { ui_action = UiAction::PasteSelected; ui.close(); }
-                                });
-                                ui.menu_button("Space", |ui| {
-                                    ui.heading("Grid Settings");
-                                    ui.separator();
-                                    ui.checkbox(&mut self.grid_settings.visible, "Visible");
-                                    ui.add(egui::Slider::new(&mut grid_extent_ui, 10.0..=500.0).logarithmic(true).text("Size"));
-                                    let grid_mm = (grid_extent_ui * 1000.0).round() as i32;
-                                    let grid_m = grid_extent_ui / 1000.0;
-                                    ui.horizontal(|ui| {
-                                        ui.label("Unit:");
-                                        ui.selectable_value(&mut self.grid_settings.unit, GridUnit::Mm, "mm");
-                                        ui.selectable_value(&mut self.grid_settings.unit, GridUnit::M, "m");
-                                    });
-                                    match self.grid_settings.unit {
-                                        GridUnit::Mm => { ui.label(format!("{} mm", grid_mm)); }
-                                        GridUnit::M => { ui.label(format!("{:.3} m", grid_m)); }
-                                    }
-                                    ui.separator();
-                                    ui.label("Grid Step (mm):");
-                                    ui.horizontal(|ui| {
-                                        ui.label("X:");
-                                        let _r = ui.add(egui::DragValue::new(&mut self.grid_settings.step_x).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Y:");
-                                        let r = ui.add(egui::DragValue::new(&mut self.grid_settings.step_y).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
-                                    });
-                                    ui.separator();
-                                    ui.label("Color:");
-                                    let c = &mut self.grid_settings.color;
-                                    if ui.button("🎨").clicked() {
-                                        self.show_color_picker = !self.show_color_picker;
-                                        if self.show_color_picker {
-                                            self.color_picker_hex = format!("{:02X}{:02X}{:02X}",
-                                                (c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8);
-                                        }
-                                    }
-                                    ui.label(format!("{:02X} {:02X} {:02X}", (c[0]*255.0) as u8, (c[1]*255.0) as u8, (c[2]*255.0) as u8));
-                                    ui.label("Type:");
-                                    ui.horizontal(|ui| {
-                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::Grid, "Grid");
-                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::Dots, "Dots");
-                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::DotsMajor, "Dots Major");
-                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::DotsOnly, "Dots Only");
-                                    });
-                                });
-                                ui.menu_button("View", |ui| {
-                                    egui::ComboBox::from_id_salt("view_direction")
-                                        .selected_text(ui_view.label())
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(&mut ui_view, ViewDirection::Top, "Top (Y+)");
-                                            ui.selectable_value(&mut ui_view, ViewDirection::Bottom, "Bottom (Y-)");
-                                            ui.selectable_value(&mut ui_view, ViewDirection::Front, "Front (Z+)");
-                                            ui.selectable_value(&mut ui_view, ViewDirection::Back, "Back (Z-)");
-                                            ui.selectable_value(&mut ui_view, ViewDirection::Left, "Left (X-)");
-                                            ui.selectable_value(&mut ui_view, ViewDirection::Right, "Right (X+)");
-                                            ui.selectable_value(&mut ui_view, ViewDirection::Iso, "Iso");
-                                        });
-                                    if self.selected.is_some() {
-                                        if ui.button("📍 Set Origin").clicked() { ui_action = UiAction::SetOriginToCursorConfirmed; ui.close(); }
-                                    }
-                                });
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.toggle_value(&mut snap.enabled, "🧲 Snap");
-                                    egui::ComboBox::from_id_salt("snap_target")
-                                        .selected_text(format!("{:?}", snap.target))
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(&mut snap.target, SnapTarget::Increment, "Increment");
-                                            ui.selectable_value(&mut snap.target, SnapTarget::Grid, "Grid");
-                                            ui.selectable_value(&mut snap.target, SnapTarget::Origin, "Origin");
-                                            ui.selectable_value(&mut snap.target, SnapTarget::Vertex, "Vertex");
-                                            ui.selectable_value(&mut snap.target, SnapTarget::Edge, "Edge");
-                                        });
-                                });
-                            });
-                        });
+                        self.draw_top_bar(ctx, &mut ui_action, &mut grid_extent_ui, &mut ui_view, snap);
 
-                        egui::SidePanel::left("tools")
-                            .resizable(false)
-                            .exact_width(40.0)
-                            .show(ctx, |ui| {
-                                ui.vertical_centered(|ui| {
-                                    ui.add_space(10.0);
-                                    if edit_m == EditMode::Object {
-                                        if ui.selectable_label(mode == TransformMode::Translate, "✥").clicked() { ui_action = UiAction::SetMode(TransformMode::Translate); }
-                                        if ui.selectable_label(mode == TransformMode::Rotate, "⟲").clicked() { ui_action = UiAction::SetMode(TransformMode::Rotate); }
-                                        if ui.selectable_label(mode == TransformMode::Scale, "⤢").clicked() { ui_action = UiAction::SetMode(TransformMode::Scale); }
-                                    } else {
-                                        if ui.selectable_label(sel_m == SelectMode::Vertex, "1").on_hover_text("Vertex").clicked() { ui_sel_m = SelectMode::Vertex; }
-                                        if ui.selectable_label(sel_m == SelectMode::Edge, "2").on_hover_text("Edge").clicked() { ui_sel_m = SelectMode::Edge; }
-                                        if ui.selectable_label(sel_m == SelectMode::Face, "3").on_hover_text("Face").clicked() { ui_sel_m = SelectMode::Face; }
-                                        ui.separator();
-                                        if ui.selectable_label(sel_tool == SelectTool::Click, "🖱️").on_hover_text("Select Click").clicked() { ui_sel_tool = SelectTool::Click; }
-                                        if ui.selectable_label(sel_tool == SelectTool::Box, "⬚").on_hover_text("Select Box").clicked() { ui_sel_tool = SelectTool::Box; }
-                                    }
-                                });
-                            });
+                        Self::draw_tools_panel(ctx, edit_m, mode, sel_m, sel_tool, &mut ui_action, &mut ui_sel_m, &mut ui_sel_tool);
 
                         egui::SidePanel::right("right_panel")
                             .resizable(true)
