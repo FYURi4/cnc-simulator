@@ -5,7 +5,7 @@ use engine_core::{Scene, Transform};
 use engine_render::state::State;
 use crate::types::*;
 use crate::geometry::*;
-use super::{set_selection, update_object_mesh};
+use super::{gizmo_world_scale, set_selection, update_object_mesh};
 pub fn handle_lmb_press(
     state: &mut State, input: &InputState, viewport_size: Vec2, selected: &mut Option<Entity>,
     selected_elements: &mut Vec<Selection>, drag: &mut Option<DragState>, mode: TransformMode, edit_mode: EditMode, select_mode: SelectMode,
