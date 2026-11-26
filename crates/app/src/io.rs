@@ -198,7 +198,7 @@ pub fn build_default_scene(state: &mut State, scene: &mut Scene, render_map: &mu
     scene.world.entity_mut(plane_e).insert(Locked);
     scene.set_name(plane_e, "Grid");
     scene.world.entity_mut(plane_e).insert(MeshKindComp(MeshKind::Plane));
-    // 1000mm = 1m plane
+    // 1000 m plane covers the maximum 500 m grid radius.
     let plane_idx = state.add_object(Mesh::plane(&state.device, 1000.0), ObjectKind::Grid, Some(MeshKind::Plane));
     render_map.push((plane_e, plane_idx));
 
