@@ -8,6 +8,7 @@ mod top_bar;
 mod tools_panel;
 mod numeric_overlay;
 mod dialogs;
+mod outliner;
 use crate::editor::*;
 use crate::io::capture_snapshot;
 use crate::types::*;
@@ -77,24 +78,7 @@ impl App {
                             .resizable(true)
                             .default_width(280.0)
                             .show(ctx, |ui| {
-                                egui::TopBottomPanel::top("outliner")
-                                    .resizable(true)
-                                    .default_height(200.0)
-                                    .show_inside(ui, |ui| {
-                                        ui.heading("Outliner");
-                                        ui.separator();
-                                        egui::ScrollArea::vertical().show(ui, |ui| {
-                                            let roots = {
-                                                let mut roots_vec = Vec::new();
-                                                let mut q = scene.world.query_filtered::<Entity, bevy_ecs::query::Without<Parent>>();
-                                                for e in q.iter(&scene.world) { roots_vec.push(e); }
-                                                roots_vec.into_iter().filter(|e| scene.get_name(*e) != Some("3D Cursor")).collect::<Vec<_>>()
-                                            };
-                                            for root in roots {
-                                                show_node(ui, &mut scene, root, selected, &mut editing, &mut new_selection);
-                                            }
-                                        });
-                                    });
+                                Self::draw_outliner(ui, &mut scene, selected, &mut editing, &mut new_selection);
 
                                 egui::CentralPanel::default().show_inside(ui, |ui| {
                                     ui.heading(if edit_m == EditMode::Object { "Properties" } else { "Edit Mode" });
