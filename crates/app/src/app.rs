@@ -100,7 +100,7 @@ impl App {
             grid_entity: None, cursor_entity: None, transform_mode: TransformMode::Translate,
             edit_mode: EditMode::Object, select_mode: SelectMode::Face, selected_elements: Vec::new(), edit_handles: Vec::new(),
             snap: SnapSettings { enabled: false, target: SnapTarget::Increment, increment: 0.5 },
-            grid_settings: GridSettings { visible: true, color: [0.5, 0.5, 0.5, 1.0], grid_type: GridType::Grid, unit: GridUnit::Mm, step_x: 1.0, step_y: 1.0 },
+            grid_settings: GridSettings { visible: true, color: [0.5, 0.5, 0.5, 1.0], grid_type: GridType::Grid, unit: GridUnit::Mm, step_x: 5.0, step_y: 5.0 },
             gcode: engine_core::gcode::GCodeProgram::default(),
             history: History::new(),
             select_tool: SelectTool::Click,
@@ -534,6 +534,16 @@ impl ApplicationHandler for App {
                                     };
 
                                     if let Some(op) = self.transform_operation.as_mut() {
+                                        if op.axis != Some(axis) {
+                                            // Preserve the previous axis result and start a clean entry.
+                                            if let Some(current) = self.scene.world.get::<Transform>(op.entity) {
+                                                op.start_translation = current.translation;
+                                                op.start_rotation = current.rotation;
+                                                op.start_scale = current.scale;
+                                            }
+                                            op.numeric_input.clear();
+                                            op.numeric_value = None;
+                                        }
                                         op.axis = Some(axis);
                                     }
 
@@ -947,7 +957,7 @@ impl ApplicationHandler for App {
                         }
                     }
 
-                    update_gizmo_positions(self.state.as_mut().unwrap(), self.gizmo.as_ref(), self.selected, &self.selected_elements, self.edit_mode, self.transform_mode, &self.scene);
+                    update_gizmo_positions(self.state.as_mut().unwrap(), self.gizmo.as_ref(), self.selected, &self.selected_elements, self.edit_mode, self.transform_mode, &self.scene, self.viewport_size);
 
                     let mut ui_action = UiAction::None;
                     let mut scene = std::mem::replace(&mut self.scene, Scene::new());
