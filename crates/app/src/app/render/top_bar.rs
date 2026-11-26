@@ -35,10 +35,10 @@ impl App {
                                     let grid_m = *grid_extent_ui / 1000.0;
                                     ui.horizontal(|ui| {
                                         ui.label("Unit:");
-                                        ui.selectable_value(&mut self.grid_settings.unit, GridUnit::Mm, "mm");
-                                        ui.selectable_value(&mut self.grid_settings.unit, GridUnit::M, "m");
+                                        ui.selectable_value(&mut grid_settings.unit, GridUnit::Mm, "mm");
+                                        ui.selectable_value(&mut grid_settings.unit, GridUnit::M, "m");
                                     });
-                                    match self.grid_settings.unit {
+                                    match grid_settings.unit {
                                         GridUnit::Mm => { ui.label(format!("{} mm", grid_mm)); }
                                         GridUnit::M => { ui.label(format!("{:.3} m", grid_m)); }
                                     }
@@ -46,18 +46,18 @@ impl App {
                                     ui.label("Grid Step (mm):");
                                     ui.horizontal(|ui| {
                                         ui.label("X:");
-                                        let _r = ui.add(egui::DragValue::new(&mut self.grid_settings.step_x).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
+                                        let _r = ui.add(egui::DragValue::new(&mut grid_settings.step_x).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
                                     });
                                     ui.horizontal(|ui| {
                                         ui.label("Y:");
-                                        let r = ui.add(egui::DragValue::new(&mut self.grid_settings.step_y).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
+                                        let r = ui.add(egui::DragValue::new(&mut grid_settings.step_y).speed(0.5).range(0.1..=100000.0).suffix(" mm"));
                                     });
                                     ui.separator();
                                     ui.label("Color:");
-                                    let c = &mut self.grid_settings.color;
+                                    let c = &mut grid_settings.color;
                                     if ui.button("🎨").clicked() {
-                                        *show_color_picker = !self.show_color_picker;
-                                        if self.show_color_picker {
+                                        *show_color_picker = !*show_color_picker;
+                                        if *show_color_picker {
                                             *color_picker_hex = format!("{:02X}{:02X}{:02X}",
                                                 (c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8);
                                         }
@@ -65,10 +65,10 @@ impl App {
                                     ui.label(format!("{:02X} {:02X} {:02X}", (c[0]*255.0) as u8, (c[1]*255.0) as u8, (c[2]*255.0) as u8));
                                     ui.label("Type:");
                                     ui.horizontal(|ui| {
-                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::Grid, "Grid");
-                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::Dots, "Dots");
-                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::DotsMajor, "Dots Major");
-                                        ui.selectable_value(&mut self.grid_settings.grid_type, GridType::DotsOnly, "Dots Only");
+                                        ui.selectable_value(&mut grid_settings.grid_type, GridType::Grid, "Grid");
+                                        ui.selectable_value(&mut grid_settings.grid_type, GridType::Dots, "Dots");
+                                        ui.selectable_value(&mut grid_settings.grid_type, GridType::DotsMajor, "Dots Major");
+                                        ui.selectable_value(&mut grid_settings.grid_type, GridType::DotsOnly, "Dots Only");
                                     });
                                 });
                                 ui.menu_button("View", |ui| {
