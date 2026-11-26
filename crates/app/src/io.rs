@@ -22,7 +22,7 @@ pub fn add_mesh_node(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, s
                 glam::Vec3::new(h, -h, -h), glam::Vec3::new(-h, -h, -h), glam::Vec3::new(-h, h, -h), glam::Vec3::new(h, h, -h),
             ]
         },
-        // 1000 m plane covers the maximum 500 m grid radius.
+        // 1000mm = 1m plane.
         MeshKind::Plane => {
             let h = 0.5; // 500mm half-extent = 1000mm plane
             vec![
@@ -199,7 +199,7 @@ pub fn build_default_scene(state: &mut State, scene: &mut Scene, render_map: &mu
     scene.set_name(plane_e, "Grid");
     scene.world.entity_mut(plane_e).insert(MeshKindComp(MeshKind::Plane));
     // 1000mm = 1m plane
-    let plane_idx = state.add_object(Mesh::plane(&state.device, 1.0), ObjectKind::Grid, Some(MeshKind::Plane));
+    let plane_idx = state.add_object(Mesh::plane(&state.device, 1000.0), ObjectKind::Grid, Some(MeshKind::Plane));
     render_map.push((plane_e, plane_idx));
 
     let cursor_e = scene.spawn(Transform::default());
