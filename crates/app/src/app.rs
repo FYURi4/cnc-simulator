@@ -21,8 +21,6 @@ use crate::editor::*;
 use crate::io::*;
 use crate::ui::*;
 
-mod transform;
-
 pub struct App {
     pub state: Option<State>,
     pub window: Option<Arc<Window>>,
