@@ -308,6 +308,7 @@ impl App {
 
             start_mouse_screen: self.input.cursor_pos,
             pivot_screen,
+            pivot_world,
 
             numeric_input: String::new(),
             numeric_value: None,
@@ -424,7 +425,7 @@ impl ApplicationHandler for App {
                             if let Some(start_verts) = &drag.start_custom_verts {
                                 let len_sq = drag.screen_axis_dir.length_squared();
                                 if len_sq > 1.0 {
-                                    let proj = d.dot(drag.screen_axis_dir) / len_sq;
+                                    let proj = d.dot(drag.screen_axis_dir) / len_sq * drag.axis_world_length;
                                     let mut new_world = drag.start_world_pos + drag.axis * proj;
                                     if self.snap.enabled {
                                         let state = self.state.as_ref().unwrap();
@@ -449,7 +450,7 @@ impl ApplicationHandler for App {
                                 TransformMode::Translate => {
                                     let len_sq = drag.screen_axis_dir.length_squared();
                                     if len_sq > 1.0 {
-                                        let proj = d.dot(drag.screen_axis_dir) / len_sq;
+                                        let proj = d.dot(drag.screen_axis_dir) / len_sq * drag.axis_world_length;
                                         let mut new_world = drag.start_world_pos + drag.axis * proj;
                                         if self.snap.enabled {
                                             let state = self.state.as_ref().unwrap();
@@ -478,7 +479,7 @@ impl ApplicationHandler for App {
                                 TransformMode::Scale => {
                                     let len_sq = drag.screen_axis_dir.length_squared();
                                     if len_sq > 1.0 {
-                                        let proj = d.dot(drag.screen_axis_dir) / len_sq;
+                                        let proj = d.dot(drag.screen_axis_dir) / len_sq * drag.axis_world_length;
                                         let axis_idx = axis_index(drag.axis);
                                         let start_v = axis_comp(drag.start_scale, axis_idx);
                                         let new_v = (start_v + proj).max(0.01);
@@ -907,7 +908,17 @@ impl ApplicationHandler for App {
                     {
                         let state = self.state.as_mut().unwrap();
                         for (entity, idx) in &self.render_map {
-                            if let Some(mat) = self.scene.global_matrix(*entity) {
+                            if let Some(mut mat) = self.scene.global_matrix(*entity) {
+                                if Some(*entity) == self.cursor_entity {
+                                    let cursor_world = mat.w_axis.truncate();
+                                    let distance = state.camera.position.distance(cursor_world).max(1e-5);
+                                    let world_view_height = 2.0 * distance * (state.camera.fovy * 0.5).tan();
+                                    // Cursor geometry spans 0.4 world units. Keep it about 28 px wide.
+                                    let cursor_scale = (world_view_height * 28.0
+                                        / self.viewport_size.y.max(1.0) / 0.4)
+                                        .clamp(1e-5, 1e5);
+                                    mat = mat * Mat4::from_scale(Vec3::splat(cursor_scale));
+                                }
                                 state.set_object_transform(*idx, mat);
                             }
                         }
@@ -979,6 +990,15 @@ impl ApplicationHandler for App {
                     let drag_end = self.drag_end;
                     let selected_elements = self.selected_elements.clone();
                     let render_map_clone = self.render_map.clone();
+                    let numeric_overlay = self.transform_operation.as_ref().map(|op| {
+                        let axis = match op.axis {
+                            Some(a) if a == Vec3::X => "X",
+                            Some(a) if a == Vec3::Y => "Y",
+                            Some(a) if a == Vec3::Z => "Z",
+                            _ => "Free",
+                        };
+                        (format!("{:?}", op.mode), axis.to_string(), op.numeric_input.clone())
+                    });
                     let state = self.state.as_mut().unwrap();
                     let mut pending_vertex_update: Option<(Entity, Vec<Vertex>)> = None;
                     let mut grid_extent_ui = state.grid_extent;
@@ -1000,6 +1020,23 @@ impl ApplicationHandler for App {
                             GridUnit::Mm => 0.02,
                             GridUnit::M => 0.00002,
                         };
+
+                        if let Some((mode_label, axis_label, value)) = &numeric_overlay {
+                            egui::Area::new(egui::Id::new("numeric_transform_input"))
+                                .order(egui::Order::Foreground)
+                                .fixed_pos(egui::pos2(
+                                    (self.viewport_size.x * 0.5 - 110.0).max(8.0),
+                                    (self.viewport_size.y - 76.0).max(8.0),
+                                ))
+                                .show(ctx, |ui| {
+                                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(egui::RichText::new(format!("{} · {}", mode_label, axis_label)).strong());
+                                            ui.monospace(if value.is_empty() { "Enter value" } else { value.as_str() });
+                                        });
+                                    });
+                                });
+                        }
 
                         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
                             egui::MenuBar::new().ui(ui, |ui| {
@@ -1283,6 +1320,24 @@ impl ApplicationHandler for App {
                                                                 rz.to_radians(),
                                                             );
                                                         }
+
+                                                        ui.label("Scale X");
+                                                        let r = ui.add(egui::DragValue::new(&mut t.scale.x).speed(0.01).range(0.0001..=100000.0));
+                                                        ui.label(format!("{:.3}", t.scale.x));
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                        ui.end_row();
+
+                                                        ui.label("Scale Y");
+                                                        let r = ui.add(egui::DragValue::new(&mut t.scale.y).speed(0.01).range(0.0001..=100000.0));
+                                                        ui.label(format!("{:.3}", t.scale.y));
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                        ui.end_row();
+
+                                                        ui.label("Scale Z");
+                                                        let r = ui.add(egui::DragValue::new(&mut t.scale.z).speed(0.01).range(0.0001..=100000.0));
+                                                        ui.label(format!("{:.3}", t.scale.z));
+                                                        if r.drag_stopped() || r.lost_focus() { pending_history_record = true; }
+                                                        ui.end_row();
                                                     });
                                                 }
                                             }
@@ -1534,14 +1589,23 @@ impl ApplicationHandler for App {
                         2.0 * state.camera.distance
                         * (state.camera.fovy * 0.5).tan()
                         / self.viewport_size.y.max(1.0);
-                    let world_delta_raw =
+                    let world_delta = if let Some(axis) = operation.axis {
+                        let probe_length = (state.camera.position.distance(operation.pivot_world) * 0.1)
+                            .max(1e-5);
+                        let axis_screen = world_to_screen(
+                            &state.camera,
+                            self.viewport_size,
+                            operation.pivot_world + axis * probe_length,
+                        ) - operation.pivot_screen;
+                        let axis_screen_len_sq = axis_screen.length_squared();
+                        if axis_screen_len_sq > 1e-6 {
+                            axis * (delta.dot(axis_screen) / axis_screen_len_sq * probe_length)
+                        } else {
+                            Vec3::ZERO
+                        }
+                    } else {
                         state.camera.right() * delta.x * units_per_pixel
-                        - state.camera.up() * delta.y * units_per_pixel;
-                    let world_delta = match operation.axis {
-                        Some(a) if a == Vec3::X => Vec3::new(world_delta_raw.x, 0.0, 0.0),
-                        Some(a) if a == Vec3::Y => Vec3::new(0.0, world_delta_raw.y, 0.0),
-                        Some(a) if a == Vec3::Z => Vec3::new(0.0, 0.0, world_delta_raw.z),
-                        _ => world_delta_raw,
+                            - state.camera.up() * delta.y * units_per_pixel
                     };
                     let local_delta = if let Some(parent) = self.scene.world.get::<Parent>(operation.entity) {
                         if let Some(parent_matrix) = self.scene.global_matrix(parent.0) {
@@ -1574,7 +1638,24 @@ impl ApplicationHandler for App {
                     }
                 }
                 TransformMode::Scale => {
-                    let factor = (1.0 + delta.x * 0.01).max(0.01);
+                    let scale_delta = if let Some(axis) = operation.axis {
+                        let probe_length = (state.camera.position.distance(operation.pivot_world) * 0.1)
+                            .max(1e-5);
+                        let axis_screen = world_to_screen(
+                            &state.camera,
+                            self.viewport_size,
+                            operation.pivot_world + axis * probe_length,
+                        ) - operation.pivot_screen;
+                        let axis_screen_len_sq = axis_screen.length_squared();
+                        if axis_screen_len_sq > 1e-6 {
+                            delta.dot(axis_screen) / axis_screen_len_sq * probe_length
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        delta.x * 0.01
+                    };
+                    let factor = (1.0 + scale_delta).max(0.01);
                     let new_scale = match operation.axis {
                         Some(a) if a == Vec3::X => Vec3::new(operation.start_scale.x * factor, operation.start_scale.y, operation.start_scale.z),
                         Some(a) if a == Vec3::Y => Vec3::new(operation.start_scale.x, operation.start_scale.y * factor, operation.start_scale.z),
