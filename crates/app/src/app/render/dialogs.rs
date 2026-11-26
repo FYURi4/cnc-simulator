@@ -23,7 +23,7 @@ impl App {
                         if *delete_confirm {
                             let dialog_pos = egui::pos2(
                                 (delete_confirm_pos.x + 15.0).clamp(0.0, ctx.viewport_rect().max.x - 200.0),
-                                (self.delete_confirm_pos.y + 15.0).clamp(0.0, ctx.viewport_rect().max.y - 80.0),
+                                (delete_confirm_pos.y + 15.0).clamp(0.0, ctx.viewport_rect().max.y - 80.0),
                             );
                             egui::Area::new(egui::Id::new("delete_confirm"))
                                 .fixed_pos(dialog_pos)
@@ -34,11 +34,11 @@ impl App {
                                             ui.label("Удалить объект?");
                                             if ui.button("Да").clicked() {
                                                 *ui_action = UiAction::ConfirmDelete;
-                                                self.delete_confirm = false;
+                                                *delete_confirm = false;
                                                 ui.close();
                                             }
                                             if ui.button("Нет").clicked() {
-                                                self.delete_confirm = false;
+                                                *delete_confirm = false;
                                                 ui.close();
                                             }
                                         });
@@ -56,10 +56,10 @@ impl App {
                                     ui.horizontal(|ui| {
                                         if ui.button("Save").clicked() {
                                             *ui_action = UiAction::SaveAs;
-                                            self.show_save_as = false;
+                                            *show_save_as = false;
                                         }
                                         if ui.button("Cancel").clicked() {
-                                            self.show_save_as = false;
+                                            *show_save_as = false;
                                         }
                                     });
                                 });
@@ -84,10 +84,10 @@ impl App {
                                     ui.separator();
                                     ui.horizontal(|ui| {
                                         ui.label("HEX:");
-                                        let resp = ui.add(egui::TextEdit::singleline(&mut self.color_picker_hex)
+                                        let resp = ui.add(egui::TextEdit::singleline(color_picker_hex)
                                             .font(egui::FontId::monospace(12.0)));
                                         if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                            let hex = self.color_picker_hex.trim().trim_start_matches('#');
+                                            let hex = *color_picker_hex.trim().trim_start_matches('#');
                                             if hex.len() == 6 {
                                                 if let Ok(val) = u32::from_str_radix(hex, 16) {
                                                     let r = ((val >> 16) & 0xFF) as f32 / 255.0;
@@ -105,8 +105,8 @@ impl App {
                                     });
                                     ui.separator();
                                     if ui.button("OK").clicked() {
-                                        self.show_color_picker = false;
-                                        self.color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
+                                        *show_color_picker = false;
+                                        *color_picker_hex = format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
                                     }
                                 });
                         }
