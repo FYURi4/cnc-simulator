@@ -62,6 +62,7 @@ jobs:
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          components: rustfmt
           targets: ${{ matrix.target }}
 
       - name: Cache dependencies
