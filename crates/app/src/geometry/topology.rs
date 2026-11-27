@@ -1,10 +1,10 @@
-use std::collections::HashSet;
-use glam::{Mat4, Quat, Vec2, Vec3};
+use crate::types::*;
 use bevy_ecs::prelude::*;
 use engine_core::Scene;
 use engine_render::mesh::{Mesh, MeshKind, Vertex};
 use engine_render::state::{ObjectKind, State};
-use crate::types::*;
+use glam::{Mat4, Quat, Vec2, Vec3};
+use std::collections::HashSet;
 pub fn get_current_faces(scene: &Scene, entity: Entity, kind: MeshKind) -> Vec<Vec<usize>> {
     if let Some(custom) = scene.world.get::<CustomMesh>(entity) {
         if let Some(cf) = &custom.custom_faces {
@@ -34,7 +34,11 @@ pub fn get_current_edges(faces: &[Vec<usize>]) -> Vec<(usize, usize)> {
         for i in 0..face.len() {
             let a = face[i];
             let b = face[(i + 1) % face.len()];
-            if a < b { edges.insert((a, b)); } else { edges.insert((b, a)); }
+            if a < b {
+                edges.insert((a, b));
+            } else {
+                edges.insert((b, a));
+            }
         }
     }
     let mut edge_vec: Vec<(usize, usize)> = edges.into_iter().collect();
@@ -45,15 +49,35 @@ pub fn get_current_edges(faces: &[Vec<usize>]) -> Vec<(usize, usize)> {
 pub fn get_edges(kind: MeshKind) -> Vec<(usize, usize)> {
     if kind == MeshKind::Cube {
         vec![
-            (0, 1), (1, 2), (2, 3), (3, 0),
-            (4, 5), (5, 6), (6, 7), (7, 4),
-            (0, 5), (1, 4), (2, 7), (3, 6),
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 0),
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (7, 4),
+            (0, 5),
+            (1, 4),
+            (2, 7),
+            (3, 6),
         ]
     } else if kind == MeshKind::Plane {
         vec![(0, 1), (1, 2), (2, 3), (3, 0)]
     } else if kind == MeshKind::Pyramid {
-        vec![(0,1),(1,2),(2,3),(3,0),(0,4),(1,4),(2,4),(3,4)]
-    } else { vec![] }
+        vec![
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 0),
+            (0, 4),
+            (1, 4),
+            (2, 4),
+            (3, 4),
+        ]
+    } else {
+        vec![]
+    }
 }
 
 pub fn get_faces(kind: MeshKind) -> Vec<Vec<usize>> {
@@ -92,11 +116,15 @@ pub fn get_faces(kind: MeshKind) -> Vec<Vec<usize>> {
         }
         // Bottom cap
         let mut bottom = vec![128usize];
-        for i in (129..161).rev() { bottom.push(i); }
+        for i in (129..161).rev() {
+            bottom.push(i);
+        }
         faces.push(bottom);
         // Top cap
         let mut top = vec![161usize];
-        for i in 162..194 { top.push(i); }
+        for i in 162..194 {
+            top.push(i);
+        }
         faces.push(top);
         faces
     } else if kind == MeshKind::Sphere {
@@ -120,11 +148,18 @@ pub fn get_faces(kind: MeshKind) -> Vec<Vec<usize>> {
     }
 }
 
-pub fn get_handles_for_mode(mode: SelectMode, faces: &[Vec<usize>], edges: &[(usize, usize)], verts: &[Vec3]) -> Vec<Vec3> {
+pub fn get_handles_for_mode(
+    mode: SelectMode,
+    faces: &[Vec<usize>],
+    edges: &[(usize, usize)],
+    verts: &[Vec3],
+) -> Vec<Vec3> {
     let mut res = Vec::new();
     match mode {
         SelectMode::Vertex => {
-            for &v in verts { res.push(v); }
+            for &v in verts {
+                res.push(v);
+            }
         }
         SelectMode::Edge => {
             for &(a, b) in edges {
@@ -134,7 +169,9 @@ pub fn get_handles_for_mode(mode: SelectMode, faces: &[Vec<usize>], edges: &[(us
         SelectMode::Face => {
             for face in faces {
                 let mut center = Vec3::ZERO;
-                for &i in face { center += verts[i]; }
+                for &i in face {
+                    center += verts[i];
+                }
                 res.push(center / face.len() as f32);
             }
         }
@@ -142,19 +179,37 @@ pub fn get_handles_for_mode(mode: SelectMode, faces: &[Vec<usize>], edges: &[(us
     res
 }
 
-pub fn build_mesh_vertices(scene: &Scene, entity: Entity, kind: MeshKind, selected: &[Selection]) -> Vec<Vertex> {
+pub fn build_mesh_vertices(
+    scene: &Scene,
+    entity: Entity,
+    kind: MeshKind,
+    selected: &[Selection],
+) -> Vec<Vertex> {
     let mut out = Vec::new();
     let mut sel_set = HashSet::new();
     for s in selected {
         match s {
-            Selection::Vertex(i) => { sel_set.insert(*i); }
-            Selection::Edge(a, b) => { sel_set.insert(*a); sel_set.insert(*b); }
-            Selection::Face(indices) => { for &i in indices { sel_set.insert(i); } }
+            Selection::Vertex(i) => {
+                sel_set.insert(*i);
+            }
+            Selection::Edge(a, b) => {
+                sel_set.insert(*a);
+                sel_set.insert(*b);
+            }
+            Selection::Face(indices) => {
+                for &i in indices {
+                    sel_set.insert(i);
+                }
+            }
         }
     }
 
     let get_color = |idx: usize| -> [f32; 3] {
-        if sel_set.contains(&idx) { [1.0, 0.5, 0.0] } else { [1.0, 1.0, 1.0] }
+        if sel_set.contains(&idx) {
+            [1.0, 0.5, 0.0]
+        } else {
+            [1.0, 1.0, 1.0]
+        }
     };
 
     let verts = if let Some(custom) = scene.world.get::<CustomMesh>(entity) {
@@ -163,7 +218,9 @@ pub fn build_mesh_vertices(scene: &Scene, entity: Entity, kind: MeshKind, select
         vec![]
     };
 
-    if verts.is_empty() { return out; }
+    if verts.is_empty() {
+        return out;
+    }
 
     let faces = get_current_faces(scene, entity, kind);
 
@@ -178,18 +235,24 @@ pub fn build_mesh_vertices(scene: &Scene, entity: Entity, kind: MeshKind, select
         }
         // Bottom cap normal
         normals.push(Vec3::NEG_Y);
-        for _ in 129..161 { normals.push(Vec3::NEG_Y); }
+        for _ in 129..161 {
+            normals.push(Vec3::NEG_Y);
+        }
         // Top cap normal
         normals.push(Vec3::Y);
-        for _ in 162..194 { normals.push(Vec3::Y); }
+        for _ in 162..194 {
+            normals.push(Vec3::Y);
+        }
         normals
     } else {
         vec![]
     };
 
     for face in faces {
-        if face.len() < 3 { continue; }
-        
+        if face.len() < 3 {
+            continue;
+        }
+
         let v0 = verts[face[0]];
         let v1 = verts[face[1]];
         let v2 = verts[face[2]];
@@ -199,16 +262,50 @@ pub fn build_mesh_vertices(scene: &Scene, entity: Entity, kind: MeshKind, select
             (v1 - v0).cross(v2 - v0).normalize()
         };
 
-        out.push(Vertex { position: v0.into(), normal: normal.into(), uv: [0.0, 1.0], color: get_color(face[0]) });
-        out.push(Vertex { position: v1.into(), normal: normal.into(), uv: [1.0, 1.0], color: get_color(face[1]) });
-        out.push(Vertex { position: v2.into(), normal: normal.into(), uv: [1.0, 0.0], color: get_color(face[2]) });
+        out.push(Vertex {
+            position: v0.into(),
+            normal: normal.into(),
+            uv: [0.0, 1.0],
+            color: get_color(face[0]),
+        });
+        out.push(Vertex {
+            position: v1.into(),
+            normal: normal.into(),
+            uv: [1.0, 1.0],
+            color: get_color(face[1]),
+        });
+        out.push(Vertex {
+            position: v2.into(),
+            normal: normal.into(),
+            uv: [1.0, 0.0],
+            color: get_color(face[2]),
+        });
 
         if face.len() > 3 {
             let v3 = verts[face[3]];
-            let n3 = if !cylinder_side_normals.is_empty() { cylinder_side_normals[face[3]] } else { normal };
-            out.push(Vertex { position: v0.into(), normal: normal.into(), uv: [0.0, 1.0], color: get_color(face[0]) });
-            out.push(Vertex { position: v2.into(), normal: normal.into(), uv: [1.0, 0.0], color: get_color(face[2]) });
-            out.push(Vertex { position: v3.into(), normal: n3.into(), uv: [0.0, 0.0], color: get_color(face[3]) });
+            let n3 = if !cylinder_side_normals.is_empty() {
+                cylinder_side_normals[face[3]]
+            } else {
+                normal
+            };
+            out.push(Vertex {
+                position: v0.into(),
+                normal: normal.into(),
+                uv: [0.0, 1.0],
+                color: get_color(face[0]),
+            });
+            out.push(Vertex {
+                position: v2.into(),
+                normal: normal.into(),
+                uv: [1.0, 0.0],
+                color: get_color(face[2]),
+            });
+            out.push(Vertex {
+                position: v3.into(),
+                normal: n3.into(),
+                uv: [0.0, 0.0],
+                color: get_color(face[3]),
+            });
         }
     }
     out

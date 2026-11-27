@@ -1,11 +1,11 @@
-use std::collections::HashSet;
-use glam::{Mat4, Quat, Vec2, Vec3};
+use super::ray_aabb;
+use crate::types::*;
 use bevy_ecs::prelude::*;
 use engine_core::Scene;
 use engine_render::mesh::{Mesh, MeshKind, Vertex};
 use engine_render::state::{ObjectKind, State};
-use crate::types::*;
-use super::ray_aabb;
+use glam::{Mat4, Quat, Vec2, Vec3};
+use std::collections::HashSet;
 pub fn gizmo_axis_rotation(axis_index: usize) -> Quat {
     let axis = match axis_index {
         0 => Vec3::X,
@@ -21,10 +21,18 @@ pub fn pick_gizmo(ray_o: Vec3, ray_d: Vec3, world_pos: Vec3, scale: f32) -> Opti
     let mut best: Option<(usize, f32)> = None;
     for i in 0..3 {
         let rot = gizmo_axis_rotation(i);
-        let mat = Mat4::from_rotation_translation(rot, world_pos) * Mat4::from_scale(Vec3::splat(scale.max(1e-6)));
+        let mat = Mat4::from_rotation_translation(rot, world_pos)
+            * Mat4::from_scale(Vec3::splat(scale.max(1e-6)));
         let inv = mat.inverse();
-        if let Some(t) = ray_aabb(inv.transform_point3(ray_o), inv.transform_vector3(ray_d), amin, amax) {
-            if best.map_or(true, |(_, bt)| t < bt) { best = Some((i, t)); }
+        if let Some(t) = ray_aabb(
+            inv.transform_point3(ray_o),
+            inv.transform_vector3(ray_d),
+            amin,
+            amax,
+        ) {
+            if best.map_or(true, |(_, bt)| t < bt) {
+                best = Some((i, t));
+            }
         }
     }
     best.map(|(i, _)| i)
@@ -36,13 +44,19 @@ pub fn pick_gizmo_ring(ray_o: Vec3, ray_d: Vec3, world_pos: Vec3, scale: f32) ->
     let hit_tolerance = 0.05 * scale.max(1e-6);
     for (i, normal) in [Vec3::X, Vec3::Y, Vec3::Z].iter().enumerate() {
         let denom = ray_d.dot(*normal);
-        if denom.abs() < 1e-6 { continue; }
+        if denom.abs() < 1e-6 {
+            continue;
+        }
         let t = (world_pos - ray_o).dot(*normal) / denom;
-        if t < 0.0 { continue; }
+        if t < 0.0 {
+            continue;
+        }
         let offset = (ray_o + ray_d * t) - world_pos;
         let in_plane = offset - *normal * offset.dot(*normal);
         if (in_plane.length() - ring_radius).abs() < hit_tolerance {
-            if best.map_or(true, |(_, bt)| t < bt) { best = Some((i, t)); }
+            if best.map_or(true, |(_, bt)| t < bt) {
+                best = Some((i, t));
+            }
         }
     }
     best.map(|(i, _)| i)

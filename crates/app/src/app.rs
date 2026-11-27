@@ -1,15 +1,15 @@
-use std::sync::Arc;
-use std::time::Instant;
+use crate::types::*;
 use bevy_ecs::prelude::Entity;
-use glam::{Vec2, Vec3};
-use winit::window::Window;
 use engine_core::Scene;
 use engine_render::state::State;
-use crate::types::*;
+use glam::{Vec2, Vec3};
+use std::sync::Arc;
+use std::time::Instant;
+use winit::window::Window;
 
 mod actions;
-mod events;
 mod camera;
+mod events;
 mod history;
 mod render;
 
@@ -56,7 +56,13 @@ pub struct App {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ViewDirection {
-    Top, Bottom, Front, Back, Left, Right, Iso,
+    Top,
+    Bottom,
+    Front,
+    Back,
+    Left,
+    Right,
+    Iso,
 }
 
 impl ViewDirection {
@@ -87,14 +93,38 @@ impl ViewDirection {
 impl App {
     pub fn new() -> Self {
         Self {
-            state: None, window: None, input: InputState::new(), scene: Scene::new(),
-            render_map: Vec::new(), gizmo: None, selected: None, editing_entity: None,
-            drag: None, drag_moved: false, viewport_size: Vec2::new(1280.0, 720.0),
-            grid_entity: None, cursor_entity: None, transform_mode: TransformMode::Translate,
+            state: None,
+            window: None,
+            input: InputState::new(),
+            scene: Scene::new(),
+            render_map: Vec::new(),
+            gizmo: None,
+            selected: None,
+            editing_entity: None,
+            drag: None,
+            drag_moved: false,
+            viewport_size: Vec2::new(1280.0, 720.0),
+            grid_entity: None,
+            cursor_entity: None,
+            transform_mode: TransformMode::Translate,
             numeric_input_mode: NumericInputMode::load(),
-            edit_mode: EditMode::Object, select_mode: SelectMode::Face, selected_elements: Vec::new(), edit_handles: Vec::new(),
-            snap: SnapSettings { enabled: false, target: SnapTarget::Increment, increment: 0.5 },
-            grid_settings: GridSettings { visible: true, color: [0.5, 0.5, 0.5, 1.0], grid_type: GridType::Grid, unit: GridUnit::Mm, step_x: 5.0, step_y: 5.0 },
+            edit_mode: EditMode::Object,
+            select_mode: SelectMode::Face,
+            selected_elements: Vec::new(),
+            edit_handles: Vec::new(),
+            snap: SnapSettings {
+                enabled: false,
+                target: SnapTarget::Increment,
+                increment: 0.5,
+            },
+            grid_settings: GridSettings {
+                visible: true,
+                color: [0.5, 0.5, 0.5, 1.0],
+                grid_type: GridType::Grid,
+                unit: GridUnit::Mm,
+                step_x: 5.0,
+                step_y: 5.0,
+            },
             gcode: engine_core::gcode::GCodeProgram::default(),
             history: History::new(),
             select_tool: SelectTool::Click,
@@ -116,18 +146,13 @@ impl App {
     }
 }
 
-
-    
-
-    impl App {
-        fn frame_dt(input: &mut InputState) -> f32 {
-            let now = Instant::now();
-            let dt = (now - input.last_frame).as_secs_f32().min(0.1);
-            input.last_frame = now;
-            dt
-        }
-
-        fn update_camera(_input: &InputState, _state: &mut State, _dt: f32) {
-        }
-
+impl App {
+    fn frame_dt(input: &mut InputState) -> f32 {
+        let now = Instant::now();
+        let dt = (now - input.last_frame).as_secs_f32().min(0.1);
+        input.last_frame = now;
+        dt
     }
+
+    fn update_camera(_input: &InputState, _state: &mut State, _dt: f32) {}
+}

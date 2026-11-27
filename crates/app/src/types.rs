@@ -1,10 +1,10 @@
-use std::collections::HashSet;
-use std::time::Instant;
-use glam::{Vec2, Vec3, Quat};
-use serde::{Deserialize, Serialize};
 use bevy_ecs::prelude::*;
 use engine_core::Transform;
 use engine_render::mesh::MeshKind;
+use glam::{Quat, Vec2, Vec3};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::time::Instant;
 
 pub const SAVE_PATH: &str = "scene.json";
 pub const PI: f32 = std::f32::consts::PI;
@@ -25,7 +25,11 @@ pub struct CustomMesh {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum TransformMode { Translate, Rotate, Scale }
+pub enum TransformMode {
+    Translate,
+    Rotate,
+    Scale,
+}
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -64,13 +68,23 @@ impl NumericInputMode {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum EditMode { Object, Edit }
+pub enum EditMode {
+    Object,
+    Edit,
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum SelectMode { Vertex, Edge, Face }
+pub enum SelectMode {
+    Vertex,
+    Edge,
+    Face,
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum SelectTool { Click, Box }
+pub enum SelectTool {
+    Click,
+    Box,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Selection {
@@ -80,7 +94,13 @@ pub enum Selection {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum SnapTarget { Increment, Grid, Origin, Vertex, Edge }
+pub enum SnapTarget {
+    Increment,
+    Grid,
+    Origin,
+    Vertex,
+    Edge,
+}
 
 pub struct SnapSettings {
     pub enabled: bool,
@@ -89,10 +109,18 @@ pub struct SnapSettings {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum GridType { Grid, Dots, DotsMajor, DotsOnly }
+pub enum GridType {
+    Grid,
+    Dots,
+    DotsMajor,
+    DotsOnly,
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum GridUnit { Mm, M }
+pub enum GridUnit {
+    Mm,
+    M,
+}
 
 pub struct GridSettings {
     pub visible: bool,
@@ -125,8 +153,16 @@ impl InputState {
     }
 }
 
-pub struct GizmoSet { pub x: usize, pub y: usize, pub z: usize }
-pub struct GizmoHandles { pub translate: GizmoSet, pub rotate: GizmoSet, pub scale: GizmoSet }
+pub struct GizmoSet {
+    pub x: usize,
+    pub y: usize,
+    pub z: usize,
+}
+pub struct GizmoHandles {
+    pub translate: GizmoSet,
+    pub rotate: GizmoSet,
+    pub scale: GizmoSet,
+}
 
 #[derive(Clone)]
 pub struct DragState {
@@ -169,9 +205,26 @@ pub struct TransformOperation {
 }
 
 pub enum UiAction {
-    None, Save, SaveAs, Load, AddCube, AddPlane, AddCylinder, AddSphere, AddPyramid, LoadGcode,
-    Undo, Redo, SetMode(TransformMode), SetOriginToCursor, SetOriginToGeometry,
-    ConfirmDelete, CopySelected, PasteSelected, CancelDelete, DeleteSelected,
+    None,
+    Save,
+    SaveAs,
+    Load,
+    AddCube,
+    AddPlane,
+    AddCylinder,
+    AddSphere,
+    AddPyramid,
+    LoadGcode,
+    Undo,
+    Redo,
+    SetMode(TransformMode),
+    SetOriginToCursor,
+    SetOriginToGeometry,
+    ConfirmDelete,
+    CopySelected,
+    PasteSelected,
+    CancelDelete,
+    DeleteSelected,
     SetOriginToCursorConfirmed,
 }
 
@@ -186,7 +239,9 @@ pub struct SavedNode {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SavedScene { pub roots: Vec<SavedNode> }
+pub struct SavedScene {
+    pub roots: Vec<SavedNode>,
+}
 
 pub struct History {
     pub stack: Vec<SavedScene>,
@@ -194,16 +249,27 @@ pub struct History {
 }
 
 impl History {
-    pub fn new() -> Self { Self { stack: Vec::new(), pos: 0 } }
+    pub fn new() -> Self {
+        Self {
+            stack: Vec::new(),
+            pos: 0,
+        }
+    }
     pub fn record(&mut self, snapshot: SavedScene) {
         self.stack.truncate(self.pos + 1);
         self.stack.push(snapshot);
         self.pos = self.stack.len() - 1;
         if self.stack.len() > 100 {
             self.stack.remove(0);
-            if self.pos > 0 { self.pos -= 1; }
+            if self.pos > 0 {
+                self.pos -= 1;
+            }
         }
     }
-    pub fn can_undo(&self) -> bool { self.pos > 0 }
-    pub fn can_redo(&self) -> bool { self.pos + 1 < self.stack.len() }
+    pub fn can_undo(&self) -> bool {
+        self.pos > 0
+    }
+    pub fn can_redo(&self) -> bool {
+        self.pos + 1 < self.stack.len()
+    }
 }
