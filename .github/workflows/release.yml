@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Existing tag to build and publish (for example v0.2.0)"
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -41,8 +35,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -121,8 +113,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          name: CNC Simulator ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          name: CNC Simulator ${{ github.ref_name }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
