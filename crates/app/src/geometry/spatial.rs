@@ -1,10 +1,13 @@
-use std::collections::HashSet;
-use glam::{Mat4, Quat, Vec2, Vec3};
+use glam::{Vec2, Vec3};
 use bevy_ecs::prelude::*;
 use engine_core::Scene;
-use engine_render::mesh::{Mesh, MeshKind, Vertex};
-use engine_render::state::{ObjectKind, State};
+use engine_render::camera::Camera;
+use engine_render::mesh::MeshKind;
+use engine_render::state::{ObjectKind, RenderObject};
+
 use crate::types::*;
+use super::topology::get_edges;
+
 pub fn apply_snap(pos: Vec3, start_pos: Vec3, axis: Vec3, snap: &SnapSettings, scene: &Scene, render_map: &[(Entity, usize)], objects: &[RenderObject], ignore_entity: Entity) -> Vec3 {
     if !snap.enabled { return pos; }
     match snap.target {

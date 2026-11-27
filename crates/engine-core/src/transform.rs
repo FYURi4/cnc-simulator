@@ -23,7 +23,10 @@ impl Default for Transform {
 
 impl Transform {
     pub fn from_translation(t: Vec3) -> Self {
-        Self { translation: t, ..Default::default() }
+        Self {
+            translation: t,
+            ..Default::default()
+        }
     }
 
     pub fn matrix(&self) -> Mat4 {

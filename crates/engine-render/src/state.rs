@@ -1,7 +1,7 @@
-﻿use std::sync::Arc;
 use anyhow::Result;
 use egui_wgpu::ScreenDescriptor;
 use egui_winit::State as EguiWinitState;
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
@@ -23,7 +23,14 @@ struct CameraUniform {
 }
 
 impl CameraUniform {
-    fn from_camera(cam: &Camera, grid_color: [f32; 3], grid_type: f32, grid_visible: bool, grid_step_x: f32, grid_step_y: f32) -> Self {
+    fn from_camera(
+        cam: &Camera,
+        grid_color: [f32; 3],
+        grid_type: f32,
+        grid_visible: bool,
+        grid_step_x: f32,
+        grid_step_y: f32,
+    ) -> Self {
         Self {
             view_proj: cam.view_proj().to_cols_array_2d(),
             eye: cam.position.into(),
@@ -133,7 +140,8 @@ impl State {
 
         let depth_texture = DepthTexture::new(&device, &config)?;
         let camera = Camera::new(config.width as f32 / config.height as f32);
-        let camera_uniform = CameraUniform::from_camera(&camera, [0.5, 0.5, 0.5], 0.0, true, 0.001, 0.001);
+        let camera_uniform =
+            CameraUniform::from_camera(&camera, [0.5, 0.5, 0.5], 0.0, true, 0.001, 0.001);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera_uniform"),
@@ -178,55 +186,65 @@ impl State {
             }],
         });
 
-        let make_pipeline = |shader_src: &'static str, label: &str, is_grid: bool| -> wgpu::RenderPipeline {
-            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(shader_src.into()),
-            });
-            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some(label),
-                bind_group_layouts: &[&camera_bgl, &object_bgl],
-                push_constant_ranges: &[],
-            });
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(label),
-                layout: Some(&layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[Vertex::layout()],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: if is_grid { Some(wgpu::BlendState::ALPHA_BLENDING) } else { Some(wgpu::BlendState::REPLACE) },
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    cull_mode: None,
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DepthTexture::FORMAT,
-                    depth_write_enabled: !is_grid,
-                    depth_compare: wgpu::CompareFunction::Less,
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                multiview: None,
-                cache: None,
-            })
-        };
+        let make_pipeline =
+            |shader_src: &'static str, label: &str, is_grid: bool| -> wgpu::RenderPipeline {
+                let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some(label),
+                    source: wgpu::ShaderSource::Wgsl(shader_src.into()),
+                });
+                let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some(label),
+                    bind_group_layouts: &[&camera_bgl, &object_bgl],
+                    push_constant_ranges: &[],
+                });
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(label),
+                    layout: Some(&layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: Some("vs_main"),
+                        buffers: &[Vertex::layout()],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: Some("fs_main"),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: config.format,
+                            blend: if is_grid {
+                                Some(wgpu::BlendState::ALPHA_BLENDING)
+                            } else {
+                                Some(wgpu::BlendState::REPLACE)
+                            },
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        cull_mode: None,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DepthTexture::FORMAT,
+                        depth_write_enabled: !is_grid,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                    }),
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview: None,
+                    cache: None,
+                })
+            };
 
-        let grid_pipeline = make_pipeline(include_str!("../shaders/mesh.wgsl"), "grid_pipeline", true);
-        let solid_pipeline = make_pipeline(include_str!("../shaders/solid.wgsl"), "solid_pipeline", false);
+        let grid_pipeline =
+            make_pipeline(include_str!("../shaders/mesh.wgsl"), "grid_pipeline", true);
+        let solid_pipeline = make_pipeline(
+            include_str!("../shaders/solid.wgsl"),
+            "solid_pipeline",
+            false,
+        );
 
         let egui_ctx = egui::Context::default();
         let egui_state = EguiWinitState::new(
@@ -269,11 +287,19 @@ impl State {
         })
     }
 
-    pub fn handle_egui_event(&mut self, event: &winit::event::WindowEvent) -> egui_winit::EventResponse {
+    pub fn handle_egui_event(
+        &mut self,
+        event: &winit::event::WindowEvent,
+    ) -> egui_winit::EventResponse {
         self.egui_state.on_window_event(&self.window, event)
     }
 
-    pub fn add_object(&mut self, mesh: Mesh, kind: ObjectKind, mesh_kind: Option<MeshKind>) -> usize {
+    pub fn add_object(
+        &mut self,
+        mesh: Mesh,
+        kind: ObjectKind,
+        mesh_kind: Option<MeshKind>,
+    ) -> usize {
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("object_uniform"),
             size: std::mem::size_of::<ObjectUniform>() as u64,
@@ -303,12 +329,16 @@ impl State {
         idx
     }
 
-        pub fn update_object_vertices(&mut self, idx: usize, vertices: &[Vertex]) {
-        if idx >= self.objects.len() { return; }
+    pub fn update_object_vertices(&mut self, idx: usize, vertices: &[Vertex]) {
+        if idx >= self.objects.len() {
+            return;
+        }
         let obj = &mut self.objects[idx];
 
         let num_indices = vertices.len() as u32;
-        if num_indices == 0 { return; }
+        if num_indices == 0 {
+            return;
+        }
 
         let new_v_size = (num_indices as usize * std::mem::size_of::<Vertex>()) as u64;
         let new_i_size = (num_indices as usize * std::mem::size_of::<u16>()) as u64;
@@ -318,43 +348,55 @@ impl State {
 
         if obj.mesh.vertex_buffer.size() < new_v_size || obj.mesh.index_buffer.size() < new_i_size {
             use wgpu::util::DeviceExt;
-            let v_buf = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("dynamic_vertices"),
-                contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            });
-            let i_buf = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("dynamic_indices"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            });
+            let v_buf = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("dynamic_vertices"),
+                    contents: bytemuck::cast_slice(vertices),
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                });
+            let i_buf = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("dynamic_indices"),
+                    contents: bytemuck::cast_slice(&indices),
+                    usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                });
             obj.mesh.vertex_buffer = v_buf;
             obj.mesh.index_buffer = i_buf;
         } else {
-            self.queue.write_buffer(&obj.mesh.vertex_buffer, 0, bytemuck::cast_slice(vertices));
-            self.queue.write_buffer(&obj.mesh.index_buffer, 0, bytemuck::cast_slice(&indices));
+            self.queue
+                .write_buffer(&obj.mesh.vertex_buffer, 0, bytemuck::cast_slice(vertices));
+            self.queue
+                .write_buffer(&obj.mesh.index_buffer, 0, bytemuck::cast_slice(&indices));
         }
         obj.mesh.index_count = num_indices;
     }
 
     pub fn set_object_transform(&mut self, idx: usize, mat: glam::Mat4) {
-        if idx >= self.objects.len() { return; }
+        if idx >= self.objects.len() {
+            return;
+        }
         self.objects[idx].model = mat;
         let u = ObjectUniform {
             model: mat.to_cols_array_2d(),
             tint: self.objects[idx].tint,
         };
-        self.queue.write_buffer(&self.objects[idx].buffer, 0, bytemuck::bytes_of(&u));
+        self.queue
+            .write_buffer(&self.objects[idx].buffer, 0, bytemuck::bytes_of(&u));
     }
 
     pub fn set_object_tint(&mut self, idx: usize, tint: [f32; 4]) {
-        if idx >= self.objects.len() { return; }
+        if idx >= self.objects.len() {
+            return;
+        }
         self.objects[idx].tint = tint;
         let u = ObjectUniform {
             model: self.objects[idx].model.to_cols_array_2d(),
             tint,
         };
-        self.queue.write_buffer(&self.objects[idx].buffer, 0, bytemuck::bytes_of(&u));
+        self.queue
+            .write_buffer(&self.objects[idx].buffer, 0, bytemuck::bytes_of(&u));
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -363,7 +405,8 @@ impl State {
             self.config.height = new_size.height;
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
             self.surface.configure(&self.device, &self.config);
-            self.depth_texture = DepthTexture::new(&self.device, &self.config).expect("recreate depth texture");
+            self.depth_texture =
+                DepthTexture::new(&self.device, &self.config).expect("recreate depth texture");
         }
     }
 
@@ -375,35 +418,56 @@ impl State {
         self.camera.zfar = (self.grid_extent * 2.0)
             .max(camera_distance * 100.0)
             .max(10.0);
-        let mut uniform = CameraUniform::from_camera(&self.camera, self.grid_color, self.grid_type, self.grid_visible, self.grid_step_x, self.grid_step_y);
+        let mut uniform = CameraUniform::from_camera(
+            &self.camera,
+            self.grid_color,
+            self.grid_type,
+            self.grid_visible,
+            self.grid_step_x,
+            self.grid_step_y,
+        );
         uniform.grid_extent = self.grid_extent;
-        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));
+        self.queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));
     }
 
     pub fn render_with_ui<F>(&mut self, mut ui_fn: F) -> Result<()>
-    where F: FnMut(&egui::Context) {
+    where
+        F: FnMut(&egui::Context),
+    {
         let raw_input = self.egui_state.take_egui_input(&self.window);
         let full_output = self.egui_ctx.run(raw_input, &mut ui_fn);
 
-        let paint_jobs = self.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+        let paint_jobs = self
+            .egui_ctx
+            .tessellate(full_output.shapes, full_output.pixels_per_point);
         let screen_descriptor = ScreenDescriptor {
             size_in_pixels: [self.config.width, self.config.height],
             pixels_per_point: full_output.pixels_per_point,
         };
 
         for (id, image_delta) in &full_output.textures_delta.set {
-            self.egui_renderer.update_texture(&self.device, &self.queue, *id, image_delta);
+            self.egui_renderer
+                .update_texture(&self.device, &self.queue, *id, image_delta);
         }
 
         let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("render_encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("render_encoder"),
+            });
 
         let cmd_buffers = self.egui_renderer.update_buffers(
-            &self.device, &self.queue, &mut encoder, &paint_jobs, &screen_descriptor,
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &paint_jobs,
+            &screen_descriptor,
         );
 
         {
@@ -414,7 +478,12 @@ impl State {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.05, g: 0.05, b: 0.08, a: 1.0 }),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.05,
+                            g: 0.05,
+                            b: 0.08,
+                            a: 1.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -506,29 +575,33 @@ impl State {
         }
 
         {
-            let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("egui_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            }).forget_lifetime();
-            self.egui_renderer.render(&mut rp, &paint_jobs, &screen_descriptor);
+            let mut rp = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("egui_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        depth_slice: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                })
+                .forget_lifetime();
+            self.egui_renderer
+                .render(&mut rp, &paint_jobs, &screen_descriptor);
         }
 
         for id in &full_output.textures_delta.free {
             self.egui_renderer.free_texture(id);
         }
 
-        self.egui_state.handle_platform_output(&self.window, full_output.platform_output);
+        self.egui_state
+            .handle_platform_output(&self.window, full_output.platform_output);
 
         let mut cmds = cmd_buffers;
         cmds.push(encoder.finish());

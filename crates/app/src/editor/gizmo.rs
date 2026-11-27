@@ -37,7 +37,7 @@ pub fn create_gizmo_objects(state: &mut State) -> GizmoHandles {
     }
 }
 
-pub(super) pub fn gizmo_world_scale(state: &State, viewport_size: Vec2, world_pos: Vec3) -> f32 {
+pub fn gizmo_world_scale(state: &State, viewport_size: Vec2, world_pos: Vec3) -> f32 {
     // The local gizmo arrow is 0.45 units long. Keep it around 85 screen pixels.
     let distance = state.camera.position.distance(world_pos).max(1e-5);
     let viewport_height = viewport_size.y.max(1.0);
