@@ -27,6 +27,42 @@ pub struct CustomMesh {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TransformMode { Translate, Rotate, Scale }
 
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NumericInputMode {
+    Absolute,
+    Relative,
+}
+
+impl Default for NumericInputMode {
+    fn default() -> Self {
+        Self::Absolute
+    }
+}
+
+impl NumericInputMode {
+    fn settings_path() -> std::path::PathBuf {
+        std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join("editor_settings.json")
+    }
+
+    pub fn load() -> Self {
+        std::fs::read_to_string(Self::settings_path())
+            .ok()
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save(self) {
+        if let Ok(json) = serde_json::to_string_pretty(&self) {
+            if let Err(error) = std::fs::write(Self::settings_path(), json) {
+                eprintln!("Failed to save editor settings: {error}");
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum EditMode { Object, Edit }
 
