@@ -24,10 +24,7 @@ pub fn handle_key(buffer: &mut String, key: KeyCode) -> bool {
 
     match key {
         // Автоматическая десятичная точка.
-        KeyCode::ArrowRight
-        | KeyCode::Period
-        | KeyCode::Comma
-        | KeyCode::NumpadDecimal => {
+        KeyCode::ArrowRight | KeyCode::Period | KeyCode::Comma | KeyCode::NumpadDecimal => {
             if !buffer.contains('.') {
                 if buffer.is_empty() {
                     buffer.push_str("0.");

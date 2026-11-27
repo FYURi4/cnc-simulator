@@ -1,4 +1,4 @@
-﻿pub mod hierarchy;
+pub mod hierarchy;
 pub mod name;
 pub mod scene;
 pub mod transform;

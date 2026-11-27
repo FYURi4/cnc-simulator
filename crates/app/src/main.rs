@@ -1,4 +1,4 @@
-﻿mod app;
+mod app;
 mod editor;
 mod geometry;
 mod io;

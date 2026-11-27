@@ -57,15 +57,34 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     );
     let minor = 1.0 - clamp(d, 0.0, 1.0);
 
-    // Major grid (15mm = 0.015m)
-    let major_step = 0.015;
-    let coord10_x = in.world_pos.x / major_step;
-    let coord10_y = in.world_pos.z / major_step;
+    // Major lines/dots every five minor grid cells (25 mm at the default 5 mm step).
+    let major_step_x = step_x * 5.0;
+    let major_step_y = step_y * 5.0;
+    let coord10_x = in.world_pos.x / major_step_x;
+    let coord10_y = in.world_pos.z / major_step_y;
     let d10 = min(
         abs(fract(coord10_x - 0.5) - 0.5) / fwidth(coord10_x),
         abs(fract(coord10_y - 0.5) - 0.5) / fwidth(coord10_y)
     );
     let major = 1.0 - clamp(d10, 0.0, 1.0);
+
+    // Dot modes use radial distance from each grid intersection in pixel space.
+    // This produces round points instead of reusing the line-distance field.
+    let minor_cell_x = fract(coord_x - 0.5) - 0.5;
+    let minor_cell_y = fract(coord_y - 0.5) - 0.5;
+    let minor_pixel_distance = length(vec2<f32>(
+        minor_cell_x / max(fwidth(coord_x), 0.00001),
+        minor_cell_y / max(fwidth(coord_y), 0.00001)
+    ));
+    let minor_dot = 1.0 - smoothstep(0.75, 1.5, minor_pixel_distance);
+
+    let major_cell_x = fract(coord10_x - 0.5) - 0.5;
+    let major_cell_y = fract(coord10_y - 0.5) - 0.5;
+    let major_pixel_distance = length(vec2<f32>(
+        major_cell_x / max(fwidth(coord10_x), 0.00001),
+        major_cell_y / max(fwidth(coord10_y), 0.00001)
+    ));
+    let major_dot = 1.0 - smoothstep(0.9, 1.8, major_pixel_distance);
 
     var color = camera.grid_color.rgb * vec3<f32>(0.2);
     var alpha = 0.0;
@@ -99,27 +118,19 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             alpha = max(alpha, axis_z);
         }
     } else if (is_dots) {
-        // Dots: minor dots at step, major dots at 15mm
-        if (minor > 0.7) {
-            color = mix(color, camera.grid_color.rgb * vec3<f32>(0.6), minor);
-            alpha = max(alpha, minor * 0.6);
-        }
-        if (major > 0.7) {
-            color = mix(color, camera.grid_color.rgb, major);
-            alpha = max(alpha, major * 0.8);
-        }
+        // Minor circular points plus larger major points.
+        color = mix(color, camera.grid_color.rgb * vec3<f32>(0.65), minor_dot);
+        alpha = max(alpha, minor_dot * 0.7);
+        color = mix(color, camera.grid_color.rgb, major_dot);
+        alpha = max(alpha, major_dot);
     } else if (is_dots_major) {
-        // Only major dots at 15mm
-        if (major > 0.7) {
-            color = mix(color, camera.grid_color.rgb, major);
-            alpha = max(alpha, major * 0.8);
-        }
+        // Only larger points at every fifth grid cell.
+        color = mix(color, camera.grid_color.rgb, major_dot);
+        alpha = max(alpha, major_dot * 0.9);
     } else if (is_dots_only) {
-        // Only major dots, no minor
-        if (major > 0.7) {
-            color = mix(color, camera.grid_color.rgb, major);
-            alpha = max(alpha, major * 0.9);
-        }
+        // Only the regular minor grid points.
+        color = mix(color, camera.grid_color.rgb * vec3<f32>(0.65), minor_dot);
+        alpha = max(alpha, minor_dot * 0.8);
     }
 
     let dist = length(in.world_pos.xz);
