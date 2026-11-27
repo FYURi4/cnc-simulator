@@ -12,11 +12,7 @@ pub(crate) fn apply_numeric_transform(&mut self) {
         };
 
         let Some(value) = op.numeric_value else {
-            // Незавершённое или очищенное число:
-            // возвращаем исходную трансформацию.
-            if let Some(mut t) =
-                self.scene.world.get_mut::<Transform>(op.entity)
-            {
+            if let Some(mut t) = self.scene.world.get_mut::<Transform>(op.entity) {
                 t.translation = op.start_translation;
                 t.rotation = op.start_rotation;
                 t.scale = op.start_scale;
@@ -28,31 +24,28 @@ pub(crate) fn apply_numeric_transform(&mut self) {
             return;
         }
 
+        let absolute = self.numeric_input_mode == NumericInputMode::Absolute;
+
         match op.mode {
             TransformMode::Translate => {
-                let axis = op.axis.unwrap_or(Vec3::X);
-                let world_delta = axis * value;
+                let axis = op.axis.unwrap_or(Vec3::X).normalize();
+                let world_delta = if absolute {
+                    axis * (value - op.pivot_world.dot(axis))
+                } else {
+                    axis * value
+                };
 
-                let local_delta =
-                    if let Some(parent) =
-                        self.scene.world.get::<Parent>(op.entity)
-                    {
-                        if let Some(parent_matrix) =
-                            self.scene.global_matrix(parent.0)
-                        {
-                            parent_matrix
-                                .inverse()
-                                .transform_vector3(world_delta)
-                        } else {
-                            world_delta
-                        }
+                let local_delta = if let Some(parent) = self.scene.world.get::<Parent>(op.entity) {
+                    if let Some(parent_matrix) = self.scene.global_matrix(parent.0) {
+                        parent_matrix.inverse().transform_vector3(world_delta)
                     } else {
                         world_delta
-                    };
+                    }
+                } else {
+                    world_delta
+                };
 
-                if let Some(mut t) =
-                    self.scene.world.get_mut::<Transform>(op.entity)
-                {
+                if let Some(mut t) = self.scene.world.get_mut::<Transform>(op.entity) {
                     t.translation = op.start_translation + local_delta;
                 }
             }
@@ -65,58 +58,60 @@ pub(crate) fn apply_numeric_transform(&mut self) {
                         .unwrap_or(Vec3::Z)
                 }).normalize();
 
-                // Пользователь вводит градусы.
-                // Quat получает радианы.
                 let angle_rad = value.to_radians();
+                let rotation = if absolute {
+                    let start = op.start_rotation.normalize();
+                    let start_vector = Vec3::new(start.x, start.y, start.z);
+                    let projected = start_vector.dot(axis);
+                    let twist = Quat::from_xyzw(
+                        axis.x * projected,
+                        axis.y * projected,
+                        axis.z * projected,
+                        start.w,
+                    ).normalize();
+                    let current_angle = 2.0 * (Vec3::new(twist.x, twist.y, twist.z).dot(axis))
+                        .atan2(twist.w);
+                    Quat::from_axis_angle(axis, angle_rad - current_angle) * op.start_rotation
+                } else {
+                    Quat::from_axis_angle(axis, angle_rad) * op.start_rotation
+                };
 
-                let rotation =
-                    Quat::from_axis_angle(axis, angle_rad)
-                        * op.start_rotation;
-
-                if let Some(mut t) =
-                    self.scene.world.get_mut::<Transform>(op.entity)
-                {
+                if let Some(mut t) = self.scene.world.get_mut::<Transform>(op.entity) {
                     t.rotation = rotation;
                 }
             }
 
             TransformMode::Scale => {
-                if value <= 0.0 {
+                if !absolute && value <= 0.0 {
                     return;
                 }
 
-                let scale = match op.axis {
-                    Some(axis) if axis == Vec3::X => {
-                        Vec3::new(
-                            op.start_scale.x * value,
-                            op.start_scale.y,
-                            op.start_scale.z,
-                        )
+                let scale = if absolute {
+                    match op.axis {
+                        Some(axis) if axis == Vec3::X =>
+                            Vec3::new(value, op.start_scale.y, op.start_scale.z),
+                        Some(axis) if axis == Vec3::Y =>
+                            Vec3::new(op.start_scale.x, value, op.start_scale.z),
+                        Some(axis) if axis == Vec3::Z =>
+                            Vec3::new(op.start_scale.x, op.start_scale.y, value),
+                        _ => Vec3::splat(value),
                     }
-
-                    Some(axis) if axis == Vec3::Y => {
-                        Vec3::new(
-                            op.start_scale.x,
-                            op.start_scale.y * value,
-                            op.start_scale.z,
-                        )
+                } else {
+                    match op.axis {
+                        Some(axis) if axis == Vec3::X =>
+                            Vec3::new(op.start_scale.x * value, op.start_scale.y, op.start_scale.z),
+                        Some(axis) if axis == Vec3::Y =>
+                            Vec3::new(op.start_scale.x, op.start_scale.y * value, op.start_scale.z),
+                        Some(axis) if axis == Vec3::Z =>
+                            Vec3::new(op.start_scale.x, op.start_scale.y, op.start_scale.z * value),
+                        _ => op.start_scale * value,
                     }
-
-                    Some(axis) if axis == Vec3::Z => {
-                        Vec3::new(
-                            op.start_scale.x,
-                            op.start_scale.y,
-                            op.start_scale.z * value,
-                        )
-                    }
-
-                    _ => op.start_scale * value,
                 };
 
-                if let Some(mut t) =
-                    self.scene.world.get_mut::<Transform>(op.entity)
-                {
-                    t.scale = scale;
+                if scale.is_finite() {
+                    if let Some(mut t) = self.scene.world.get_mut::<Transform>(op.entity) {
+                        t.scale = scale;
+                    }
                 }
             }
         }
