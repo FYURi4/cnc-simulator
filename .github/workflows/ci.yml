@@ -64,4 +64,4 @@ jobs:
           tool: cargo-audit
 
       - name: Audit locked dependencies
-        run: cargo audit --locked
+        run: cargo audit
