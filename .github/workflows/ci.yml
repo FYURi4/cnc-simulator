@@ -1,4 +1,3 @@
-
 name: CI
 
 on:
@@ -6,29 +5,29 @@ on:
     branches:
       - "**"
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  windows:
-    name: Windows / Rust
+  quality:
+    name: Rust quality checks (Windows)
     runs-on: windows-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
 
-      - name: Cache Rust dependencies
+      - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
@@ -37,8 +36,32 @@ jobs:
       - name: Check compilation
         run: cargo check --workspace --all-targets --locked
 
-      - name: Build
-        run: cargo build --workspace --release --locked
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run tests
         run: cargo test --workspace --all-targets --locked
+
+      - name: Build release
+        run: cargo build --workspace --release --locked
+
+  security:
+    name: Dependency security audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit locked dependencies
+        run: cargo audit --locked
