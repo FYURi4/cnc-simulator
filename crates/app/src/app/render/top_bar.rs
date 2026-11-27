@@ -1,9 +1,9 @@
 use egui;
 use crate::app::{App, ViewDirection};
-use crate::types::{GridUnit, GridType, GridSettings, SnapTarget, SnapSettings, UiAction};
+use crate::types::{GridUnit, GridType, GridSettings, SnapTarget, SnapSettings, UiAction, NumericInputMode};
 
 impl App {
-    pub(super) fn draw_top_bar(ctx: &egui::Context, ui_action: &mut UiAction, grid_extent_ui: &mut f32, ui_view: &mut ViewDirection, snap: &mut SnapSettings, grid_settings: &mut GridSettings, show_save_as: &mut bool, show_color_picker: &mut bool, color_picker_hex: &mut String, selected: Option<bevy_ecs::prelude::Entity>) {
+    pub(super) fn draw_top_bar(ctx: &egui::Context, ui_action: &mut UiAction, grid_extent_ui: &mut f32, ui_view: &mut ViewDirection, snap: &mut SnapSettings, grid_settings: &mut GridSettings, show_save_as: &mut bool, show_color_picker: &mut bool, color_picker_hex: &mut String, selected: Option<bevy_ecs::prelude::Entity>, numeric_input_mode: &mut NumericInputMode) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
                             egui::MenuBar::new().ui(ui, |ui| {
                                 ui.menu_button("File", |ui| {
@@ -25,6 +25,17 @@ impl App {
                                     ui.separator();
                                     if ui.button("Copy (Ctrl+C)").clicked() { *ui_action = UiAction::CopySelected; ui.close(); }
                                     if ui.button("Paste (Ctrl+V)").clicked() { *ui_action = UiAction::PasteSelected; ui.close(); }
+                                });
+                                ui.menu_button("Settings", |ui| {
+                                    ui.heading("Numeric Transform Input");
+                                    ui.separator();
+                                    ui.radio_value(numeric_input_mode, NumericInputMode::Absolute, "Absolute");
+                                    ui.radio_value(numeric_input_mode, NumericInputMode::Relative, "Relative");
+                                    ui.separator();
+                                    match numeric_input_mode {
+                                        NumericInputMode::Absolute => ui.label("Entered values set the final transform."),
+                                        NumericInputMode::Relative => ui.label("Entered values are applied relative to the start."),
+                                    };
                                 });
                                 ui.menu_button("Space", |ui| {
                                     ui.heading("Grid Settings");
