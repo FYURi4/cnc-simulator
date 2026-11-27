@@ -44,6 +44,7 @@ impl App {
                     let save_as_path = &mut self.save_as_path;
                     let delete_confirm = &mut self.delete_confirm;
                     let delete_confirm_pos = self.delete_confirm_pos;
+                    let mut numeric_input_mode = self.numeric_input_mode;
                     let numeric_overlay = self.transform_operation.as_ref().map(|op| {
                         let axis = match op.axis {
                             Some(a) if a == Vec3::X => "X",
@@ -77,7 +78,7 @@ impl App {
 
                         Self::draw_numeric_overlay(ctx, viewport_size, numeric_overlay.as_ref());
 
-                        Self::draw_top_bar(ctx, &mut ui_action, &mut grid_extent_ui, &mut ui_view, snap, grid_settings, show_save_as, show_color_picker, color_picker_hex, selected);
+                        Self::draw_top_bar(ctx, &mut ui_action, &mut grid_extent_ui, &mut ui_view, snap, grid_settings, show_save_as, show_color_picker, color_picker_hex, selected, &mut numeric_input_mode);
 
                         Self::draw_tools_panel(ctx, edit_m, mode, sel_m, sel_tool, &mut ui_action, &mut ui_sel_m, &mut ui_sel_tool);
 
@@ -92,6 +93,11 @@ impl App {
 
                         Self::draw_dialogs(ctx, drag_start, drag_end, &mut ui_action, delete_confirm, delete_confirm_pos, show_save_as, save_as_path, show_color_picker, color_picker_hex, &mut grid_settings.color);
                     });
+
+                    if numeric_input_mode != self.numeric_input_mode {
+                        self.numeric_input_mode = numeric_input_mode;
+                        self.numeric_input_mode.save();
+                    }
 
                     let gs = &mut self.grid_settings;
                     let grid_type_val = match gs.grid_type {
