@@ -2,7 +2,7 @@ use super::{capture_snapshot, despawn_all};
 use crate::types::*;
 use anyhow::Result;
 use bevy_ecs::prelude::*;
-use engine_core::{Parent, Scene, Transform};
+use engine_core::Scene;
 use engine_render::mesh::{Mesh, MeshKind};
 use engine_render::state::{ObjectKind, State};
 use std::fs;
