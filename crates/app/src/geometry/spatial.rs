@@ -10,7 +10,7 @@ use crate::types::*;
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "Snapping combines position, settings, scene, and render data without shared ownership.",
+    reason = "Snapping combines position, settings, scene, and render data without shared ownership."
 )]
 pub fn apply_snap(
     pos: Vec3,

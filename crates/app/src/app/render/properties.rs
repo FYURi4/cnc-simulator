@@ -9,7 +9,7 @@ use glam::Vec3;
 impl App {
     #[expect(
         clippy::too_many_arguments,
-        reason = "The properties panel edits several independent editor resources.",
+        reason = "The properties panel edits several independent editor resources."
     )]
     pub(super) fn draw_properties_panel(
         ui: &mut egui::Ui,
