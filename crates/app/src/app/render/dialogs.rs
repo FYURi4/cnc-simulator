@@ -50,8 +50,7 @@ impl App {
             egui::Area::new(egui::Id::new("delete_confirm"))
                 .fixed_pos(dialog_pos)
                 .show(ctx, |ui| {
-                    let layout = egui::Layout::centered_and_justified(egui::Direction::LeftToRight);
-                    ui.allocate_ui_with_layout(egui::Vec2::ZERO, layout, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.label("Удалить объект?");
                             if ui.button("Да").clicked() {

@@ -1,5 +1,6 @@
 use crate::app::App;
 use crate::ui::show_node;
+use crate::types::UiAction;
 use bevy_ecs::prelude::*;
 use engine_core::{Parent, Scene};
 
@@ -10,12 +11,19 @@ impl App {
         selected: Option<Entity>,
         editing: &mut Option<Entity>,
         new_selection: &mut Option<Entity>,
+        new_parent: &mut Option<(Entity, Entity)>,
+        ui_action: &mut UiAction,
     ) {
         egui::TopBottomPanel::top("outliner")
             .resizable(true)
             .default_height(200.0)
             .show_inside(ui, |ui| {
-                ui.heading("Outliner");
+                ui.horizontal(|ui| {
+                    ui.heading("Outliner");
+                    if ui.small_button("＋ Folder").clicked() {
+                        *ui_action = UiAction::CreateFolder;
+                    }
+                });
                 ui.separator();
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let roots = {
@@ -32,7 +40,7 @@ impl App {
                             .collect::<Vec<_>>()
                     };
                     for root in roots {
-                        show_node(ui, scene, root, selected, editing, new_selection);
+                        show_node(ui, scene, root, selected, editing, new_selection, new_parent);
                     }
                 });
             });

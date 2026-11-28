@@ -38,6 +38,20 @@ impl App {
             UiAction::Undo => self.do_undo(),
             UiAction::Redo => self.do_redo(),
             UiAction::SetMode(m) => self.transform_mode = m,
+            UiAction::CreateFolder => {
+                let folder = self.scene.spawn(Transform::default());
+                self.scene.set_name(folder, "Collection");
+                self.scene.world.entity_mut(folder).insert(Folder);
+                if let Some(child) = self.selected {
+                    let protected = Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
+                    if !protected {
+                        self.scene.reparent_preserve_world(child, folder);
+                    }
+                }
+                self.selected = Some(folder);
+                self.selected_elements.clear();
+                self.history.record(capture_snapshot(&mut self.scene));
+            }
             UiAction::ConfirmDelete => {
                 if let Some(e) = self.selected {
                     if self.scene.world.get::<Locked>(e).is_none() {

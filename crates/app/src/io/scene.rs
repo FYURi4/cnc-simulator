@@ -20,7 +20,7 @@ pub fn add_mesh_node(
     let verts = match mesh_kind {
         // 100mm = 0.1m (width/depth), height = 100mm = 0.1m
         MeshKind::Cube => {
-            let h = 0.05; // 50mm half-extent
+            let h = 0.005; // 5mm half-extent
             vec![
                 glam::Vec3::new(-h, -h, h),
                 glam::Vec3::new(h, -h, h),
@@ -34,7 +34,7 @@ pub fn add_mesh_node(
         }
         // 1000mm = 1m plane.
         MeshKind::Plane => {
-            let h = 0.5; // 500mm half-extent = 1000mm plane
+            let h = 0.005; // 5mm half-extent = 10mm plane
             vec![
                 glam::Vec3::new(-h, 0.0, h),
                 glam::Vec3::new(h, 0.0, h),
@@ -43,13 +43,13 @@ pub fn add_mesh_node(
             ]
         }
         MeshKind::Pyramid => {
-            let h = 0.05; // 100mm base
+            let h = 0.005; // 10mm base
             vec![
                 glam::Vec3::new(-h, 0.0, h),
                 glam::Vec3::new(h, 0.0, h),
                 glam::Vec3::new(h, 0.0, -h),
                 glam::Vec3::new(-h, 0.0, -h),
-                glam::Vec3::new(0.0, 0.1, 0.0), // height 100mm
+                glam::Vec3::new(0.0, 0.01, 0.0), // height 10mm
             ]
         }
         MeshKind::Cylinder => {
@@ -57,8 +57,8 @@ pub fn add_mesh_node(
                 glam::Vec3::new(0.0, 0.0, 0.0),
                 glam::Vec3::new(0.0, 0.1, 0.0),
             ];
-            let radius = 0.05; // 50mm radius = 100mm diameter
-            let height = 0.1; // 100mm height
+            let radius = 0.005; // 5mm radius = 10mm diameter
+            let height = 0.01; // 10mm height
             for i in 0..32 {
                 let a = (i as f32 / 32.0) * std::f32::consts::TAU;
                 verts.push(glam::Vec3::new(radius * a.cos(), 0.0, radius * a.sin()));
@@ -73,7 +73,7 @@ pub fn add_mesh_node(
             let mut verts = Vec::new();
             let segments = 24;
             let rings = 16;
-            let radius = 0.05; // 50mm radius = 100mm diameter
+            let radius = 0.005; // 5mm radius = 10mm diameter
             for i in 0..=rings {
                 let v = i as f32 / rings as f32;
                 let phi = v * std::f32::consts::PI;
@@ -104,6 +104,7 @@ pub fn add_mesh_node(
     if let Some(p) = parent {
         scene.set_parent(e, p);
     }
+    crate::editor::update_object_mesh(state, scene, render_map, e, &[]);
     e
 }
 
@@ -216,6 +217,7 @@ pub fn serialize_subtree(scene: &Scene, entity: Entity) -> SavedNode {
         mesh_kind,
         transform,
         is_locked,
+        is_folder: scene.world.get::<Folder>(entity).is_some(),
         custom_mesh,
         children: children
             .iter()
@@ -266,7 +268,7 @@ pub fn build_default_scene(
         .insert(MeshKindComp(MeshKind::Cube));
 
     let verts = {
-        let h = 0.05; // 50mm half-extent = 100mm cube
+        let h = 0.005; // 5mm half-extent = 10mm cube
         vec![
             glam::Vec3::new(-h, -h, h),
             glam::Vec3::new(h, -h, h),
@@ -286,7 +288,7 @@ pub fn build_default_scene(
 
     scene.set_parent(cube_e, plane_e);
     let cube_idx = state.add_object(
-        Mesh::cube(&state.device, 0.1),
+        Mesh::cube(&state.device, 0.01),
         ObjectKind::Solid,
         Some(MeshKind::Cube),
     );

@@ -12,6 +12,9 @@ pub const PI: f32 = std::f32::consts::PI;
 #[derive(Component, Clone, Copy)]
 pub struct Locked;
 
+#[derive(Component, Clone, Copy, Default)]
+pub struct Folder;
+
 #[derive(Component, Clone, Copy)]
 pub struct MeshKindComp(pub MeshKind);
 
@@ -218,6 +221,7 @@ pub enum UiAction {
     AddCylinder,
     AddSphere,
     AddPyramid,
+    CreateFolder,
     LoadGcode,
     Undo,
     Redo,
@@ -238,6 +242,8 @@ pub struct SavedNode {
     pub mesh_kind: Option<MeshKind>,
     pub transform: Transform,
     pub is_locked: bool,
+    #[serde(default)]
+    pub is_folder: bool,
     pub custom_mesh: Option<CustomMesh>,
     pub children: Vec<SavedNode>,
 }
