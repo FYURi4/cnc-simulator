@@ -5,7 +5,7 @@ use crate::geometry::*;
 use crate::io::*;
 use crate::types::*;
 use bevy_ecs::prelude::*;
-use engine_core::{Parent, Transform};
+use engine_core::Transform;
 use engine_render::mesh::MeshKind;
 use glam::{Vec2, Vec3};
 use winit::{
