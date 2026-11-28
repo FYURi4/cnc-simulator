@@ -28,68 +28,67 @@ pub fn show_node(
     let state =
         egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
 
-    let (header, dropped) = ui.dnd_drop_zone::<Entity, _>(egui::Frame::default(), |ui| {
-        ui.dnd_drag_source(id.with("drag"), entity, |ui| {
-            state.show_header(ui, |ui| {
-                if *editing == Some(entity) {
-                    let mut name = raw_name.clone();
-                    let response =
-                        ui.add(egui::TextEdit::singleline(&mut name).desired_width(120.0));
-                    if response.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        if !name.is_empty() {
-                            scene.set_name(entity, name);
-                        }
-                        *editing = None;
+    let (_toggle_response, header_response, _) = state
+        .show_header(ui, |ui| {
+            if *editing == Some(entity) {
+                let mut name = raw_name.clone();
+                let response =
+                    ui.add(egui::TextEdit::singleline(&mut name).desired_width(120.0));
+                if response.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    if !name.is_empty() {
+                        scene.set_name(entity, name);
                     }
-                } else {
-                    let label = if is_folder {
-                        format!("📁 {}", raw_name)
-                    } else {
-                        raw_name.clone()
-                    };
-                    let label = if is_selected {
-                        egui::RichText::new(label)
-                            .strong()
-                            .color(egui::Color32::YELLOW)
-                    } else {
-                        egui::RichText::new(label)
-                    };
-                    let resp = ui.add(egui::Button::selectable(is_selected, label));
-                    let rest_rect = egui::Rect::from_min_max(
-                        egui::pos2(resp.rect.right(), resp.rect.top()),
-                        ui.max_rect().right_bottom(),
-                    );
-                    let row_resp =
-                        ui.interact(rest_rect, id.with("row_click"), egui::Sense::click());
-                    let combined = resp.union(row_resp);
-                    if combined.clicked() {
-                        *new_selection = Some(entity);
-                    }
-                    if combined.double_clicked() {
-                        *editing = Some(entity);
-                    }
+                    *editing = None;
                 }
-            })
+                response
+            } else {
+                let label = if is_folder {
+                    format!("📁 {}", raw_name)
+                } else {
+                    raw_name.clone()
+                };
+                let label = if is_selected {
+                    egui::RichText::new(label)
+                        .strong()
+                        .color(egui::Color32::YELLOW)
+                } else {
+                    egui::RichText::new(label)
+                };
+                let button = ui.add(egui::Button::selectable(is_selected, label));
+                let row_rect = egui::Rect::from_min_max(
+                    button.rect.min,
+                    egui::pos2(ui.max_rect().right(), button.rect.bottom()),
+                );
+                let response =
+                    ui.interact(row_rect, id.with("row_drag"), egui::Sense::click_and_drag());
+                if response.clicked() {
+                    *new_selection = Some(entity);
+                }
+                if response.double_clicked() {
+                    *editing = Some(entity);
+                }
+                response
+            }
         })
-        .inner
-    });
-    if let Some(dragged) = dropped {
+        .body(|ui| {
+            for child in children {
+                show_node(
+                    ui,
+                    scene,
+                    child,
+                    selected,
+                    editing,
+                    new_selection,
+                    new_parent,
+                );
+            }
+        });
+
+    header_response.inner.dnd_set_drag_payload(entity);
+    if let Some(dragged) = header_response.inner.dnd_release_payload::<Entity>() {
         let child = *dragged;
         if child != entity {
             *new_parent = Some((child, entity));
         }
     }
-    header.inner.body(|ui| {
-        for child in children {
-            show_node(
-                ui,
-                scene,
-                child,
-                selected,
-                editing,
-                new_selection,
-                new_parent,
-            );
-        }
-    });
 }

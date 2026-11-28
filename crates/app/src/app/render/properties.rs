@@ -189,7 +189,9 @@ impl App {
                             });
                             if pivot_changed {
                                 let delta = new_pivot - old_pivot;
-                                t.translation += t.rotation * (t.scale * delta);
+                                let rotation = t.rotation;
+                                let scale = t.scale;
+                                t.translation += rotation * (scale * delta);
                                 t.pivot_offset = new_pivot;
                             }
                             ui.separator();
