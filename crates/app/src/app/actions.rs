@@ -247,29 +247,26 @@ impl App {
             }
             UiAction::SetOriginToSelection => {
                 if let Some(sel) = self.selected {
-                    let pivot = self
-                        .selected_elements
-                        .last()
-                        .and_then(|selection| {
-                            let mesh = self.scene.world.get::<CustomMesh>(sel)?;
-                            match selection {
-                                Selection::Vertex(index) => mesh.vertices.get(*index).copied(),
-                                Selection::Edge(a, b) => Some(
-                                    (*mesh.vertices.get(*a)? + *mesh.vertices.get(*b)?) * 0.5
-                                ),
-                                Selection::Face(indices) => {
-                                    let mut center = Vec3::ZERO;
-                                    let mut count = 0usize;
-                                    for index in indices {
-                                        if let Some(vertex) = mesh.vertices.get(*index) {
-                                            center += *vertex;
-                                            count += 1;
-                                        }
-                                    }
-                                    (count > 0).then_some(center / count as f32)
-                                }
+                    let pivot = self.selected_elements.last().and_then(|selection| {
+                        let mesh = self.scene.world.get::<CustomMesh>(sel)?;
+                        match selection {
+                            Selection::Vertex(index) => mesh.vertices.get(*index).copied(),
+                            Selection::Edge(a, b) => {
+                                Some((*mesh.vertices.get(*a)? + *mesh.vertices.get(*b)?) * 0.5)
                             }
-                        });
+                            Selection::Face(indices) => {
+                                let mut center = Vec3::ZERO;
+                                let mut count = 0usize;
+                                for index in indices {
+                                    if let Some(vertex) = mesh.vertices.get(*index) {
+                                        center += *vertex;
+                                        count += 1;
+                                    }
+                                }
+                                (count > 0).then_some(center / count as f32)
+                            }
+                        }
+                    });
                     if let Some(pivot) = pivot {
                         set_object_pivot(&mut self.scene, sel, pivot);
                         self.history.record(capture_snapshot(&mut self.scene));

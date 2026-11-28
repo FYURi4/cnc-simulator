@@ -162,13 +162,17 @@ pub fn update_gizmo_positions(
         TransformMode::Rotate => {
             state.set_object_transform(
                 active.x,
-                Mat4::from_rotation_translation(gizmo_rotation * Quat::from_rotation_y(-PI / 2.0), pos)
-                    * Mat4::from_scale(Vec3::splat(gizmo_scale)),
+                Mat4::from_rotation_translation(
+                    gizmo_rotation * Quat::from_rotation_y(-PI / 2.0),
+                    pos,
+                ) * Mat4::from_scale(Vec3::splat(gizmo_scale)),
             );
             state.set_object_transform(
                 active.y,
-                Mat4::from_rotation_translation(gizmo_rotation * Quat::from_rotation_x(-PI / 2.0), pos)
-                    * Mat4::from_scale(Vec3::splat(gizmo_scale)),
+                Mat4::from_rotation_translation(
+                    gizmo_rotation * Quat::from_rotation_x(-PI / 2.0),
+                    pos,
+                ) * Mat4::from_scale(Vec3::splat(gizmo_scale)),
             );
             state.set_object_transform(
                 active.z,

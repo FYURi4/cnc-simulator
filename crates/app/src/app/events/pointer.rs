@@ -4,7 +4,7 @@ use crate::geometry::*;
 use crate::io::*;
 use crate::types::*;
 use engine_core::{Parent, Transform};
-use glam::{Mat4, Quat, Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3};
 use winit::{
     dpi::PhysicalPosition,
     event::{ElementState, MouseButton},

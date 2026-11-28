@@ -118,9 +118,8 @@ impl App {
                         start.w,
                     )
                     .normalize();
-                    let current_angle = 2.0
-                        * (Vec3::new(twist.x, twist.y, twist.z).dot(axis_in_parent))
-                            .atan2(twist.w);
+                    let current_angle =
+                        2.0 * (Vec3::new(twist.x, twist.y, twist.z).dot(axis_in_parent)).atan2(twist.w);
                     self.world_rotation_delta_local(
                         op.entity,
                         op.start_rotation,
@@ -143,15 +142,9 @@ impl App {
 
                 let scale = if absolute {
                     match op.axis_index {
-                        Some(0) => {
-                            Vec3::new(value, op.start_scale.y, op.start_scale.z)
-                        }
-                        Some(1) => {
-                            Vec3::new(op.start_scale.x, value, op.start_scale.z)
-                        }
-                        Some(2) => {
-                            Vec3::new(op.start_scale.x, op.start_scale.y, value)
-                        }
+                        Some(0) => Vec3::new(value, op.start_scale.y, op.start_scale.z),
+                        Some(1) => Vec3::new(op.start_scale.x, value, op.start_scale.z),
+                        Some(2) => Vec3::new(op.start_scale.x, op.start_scale.y, value),
                         _ => Vec3::splat(value),
                     }
                 } else {
