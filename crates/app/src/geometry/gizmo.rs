@@ -1,11 +1,5 @@
 use super::ray_aabb;
-use crate::types::*;
-use bevy_ecs::prelude::*;
-use engine_core::Scene;
-use engine_render::mesh::{Mesh, MeshKind, Vertex};
-use engine_render::state::{ObjectKind, State};
-use glam::{Mat4, Quat, Vec2, Vec3};
-use std::collections::HashSet;
+use glam::{Mat4, Quat, Vec3};
 pub fn gizmo_axis_rotation(axis_index: usize) -> Quat {
     let axis = match axis_index {
         0 => Vec3::X,
@@ -30,9 +24,8 @@ pub fn pick_gizmo(ray_o: Vec3, ray_d: Vec3, world_pos: Vec3, scale: f32) -> Opti
             amin,
             amax,
         ) {
-            if best.map_or(true, |(_, bt)| t < bt) {
-                best = Some((i, t));
-            }
+            if best.is_none_or(|(_, bt)| t < bt) {
+            best = Some((i, t));
         }
     }
     best.map(|(i, _)| i)
