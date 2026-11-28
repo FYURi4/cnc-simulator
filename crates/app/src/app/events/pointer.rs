@@ -3,9 +3,7 @@ use crate::editor::*;
 use crate::geometry::*;
 use crate::io::*;
 use crate::types::*;
-use bevy_ecs::prelude::*;
 use engine_core::{Parent, Transform};
-use engine_render::mesh::MeshKind;
 use glam::{Mat4, Quat, Vec2, Vec3};
 use winit::{
     dpi::PhysicalPosition,
