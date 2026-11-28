@@ -1,9 +1,8 @@
 use crate::types::*;
 use bevy_ecs::prelude::*;
 use engine_core::Scene;
-use engine_render::mesh::{Mesh, MeshKind, Vertex};
-use engine_render::state::{ObjectKind, State};
-use glam::{Mat4, Quat, Vec2, Vec3};
+use engine_render::mesh::{MeshKind, Vertex};
+use glam::Vec3;
 use std::collections::HashSet;
 pub fn get_current_faces(scene: &Scene, entity: Entity, kind: MeshKind) -> Vec<Vec<usize>> {
     if let Some(custom) = scene.world.get::<CustomMesh>(entity) {
@@ -228,8 +227,7 @@ pub fn build_mesh_vertices(
     let cylinder_side_normals: Vec<Vec3> = if kind == MeshKind::Cylinder && !verts.is_empty() {
         let mut normals = Vec::new();
         // Side vertices: 0..127 (32 segs × 4)
-        for i in 0..128 {
-            let v = verts[i];
+        for &v in verts.iter().take(128) {
             // Horizontal normal from cylinder axis outward
             normals.push(Vec3::new(-v.x, 0.0, -v.z).normalize());
         }
