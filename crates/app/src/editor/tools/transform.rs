@@ -152,8 +152,9 @@ impl App {
                         active.start_scale,
                     )
                 } else {
-                    // При переключении инструмента фиксируем предыдущий.
-                    self.confirm_transform_if_changed("Mode switch");
+                    // A transform is only committed explicitly with Enter.
+                    // Switching tools discards the unconfirmed preview.
+                    self.cancel_transform();
 
                     let Some(t) = self.scene.world.get::<Transform>(entity) else {
                         return;
