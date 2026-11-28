@@ -52,19 +52,8 @@ impl App {
 
                                 if let Some(op) = self.transform_operation.as_mut() {
                                     if op.axis != Some(axis) {
-                                        // Preserve the previous axis result and start a clean entry.
-                                        if let Some(current) =
-                                            self.scene.world.get::<Transform>(op.entity)
-                                        {
-                                            op.start_translation = current.translation;
-                                            op.start_rotation = current.rotation;
-                                            op.start_scale = current.scale;
-                                            op.pivot_world = self
-                                                .scene
-                                                .global_matrix(op.entity)
-                                                .map(|matrix| matrix.transform_point3(Vec3::ZERO))
-                                                .unwrap_or(op.pivot_world);
-                                        }
+                                        // Every axis is evaluated from the operation's original
+                                        // transform. Switching axes must never commit the preview.
                                         op.numeric_input.clear();
                                         op.numeric_value = None;
                                     }
