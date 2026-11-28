@@ -1,6 +1,5 @@
 use crate::app::App;
 use crate::types::UiAction;
-use egui;
 use glam::Vec2;
 
 impl App {
