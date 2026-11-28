@@ -26,9 +26,7 @@ pub fn handle_key(buffer: &mut String, key: KeyCode) -> bool {
         // Автоматическая десятичная точка.
         KeyCode::ArrowRight | KeyCode::Period | KeyCode::Comma | KeyCode::NumpadDecimal => {
             if !buffer.contains('.') {
-                if buffer.is_empty() {
-                    buffer.push_str("0.");
-                } else if buffer == "-" {
+                if buffer.is_empty() || buffer == "-" {
                     buffer.push_str("0.");
                 } else {
                     buffer.push('.');
