@@ -61,9 +61,8 @@ pub fn apply_snap(
             } else {
                 // For local/oblique axes, use the effective grid spacing projected
                 // onto that axis instead of silently falling back to Snap.increment.
-                let projected_step = ((direction.x * step_x).powi(2)
-                    + (direction.z * step_z).powi(2))
-                .sqrt();
+                let projected_step =
+                    ((direction.x * step_x).powi(2) + (direction.z * step_z).powi(2)).sqrt();
                 let step = if projected_step > 1e-6 {
                     projected_step
                 } else {
@@ -90,7 +89,9 @@ pub fn apply_snap(
 
             for (entity, object_idx) in render_map {
                 if *entity == ignore_entity
-                    || objects.get(*object_idx).is_none_or(|object| object.kind != ObjectKind::Solid)
+                    || objects
+                        .get(*object_idx)
+                        .is_none_or(|object| object.kind != ObjectKind::Solid)
                 {
                     continue;
                 }
