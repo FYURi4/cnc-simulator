@@ -2,7 +2,6 @@ use crate::app::{App, ViewDirection};
 use crate::types::{
     GridSettings, GridType, GridUnit, NumericInputMode, SnapSettings, SnapTarget, UiAction,
 };
-use egui;
 
 impl App {
     pub(super) fn draw_top_bar(
@@ -131,7 +130,7 @@ impl App {
                     });
                     ui.horizontal(|ui| {
                         ui.label("Y:");
-                        let r = ui.add(
+                        ui.add(
                             egui::DragValue::new(&mut grid_settings.step_y)
                                 .speed(0.5)
                                 .range(0.1..=100000.0)
@@ -186,11 +185,9 @@ impl App {
                             ui.selectable_value(ui_view, ViewDirection::Right, "Right (X+)");
                             ui.selectable_value(ui_view, ViewDirection::Iso, "Iso");
                         });
-                    if selected.is_some() {
-                        if ui.button("📍 Set Origin").clicked() {
+                    if selected.is_some() && ui.button("📍 Set Origin").clicked() {
                             *ui_action = UiAction::SetOriginToCursorConfirmed;
                             ui.close();
-                        }
                     }
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
