@@ -63,13 +63,21 @@ impl App {
                 let folder = self.scene.spawn(Transform::default());
                 self.scene.set_name(folder, "Collection");
                 self.scene.world.entity_mut(folder).insert(Folder);
-                if let Some(child) = self.selected {
-                    let protected =
-                        Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
+                let selected = self.selected;
+                let selected_parent = selected.and_then(|entity| self.scene.world.get::<Parent>(entity).map(|parent| parent.0));
+                let folder_parent = selected
+                    .filter(|entity| self.scene.world.get::<Folder>(*entity).is_some())
+                    .or(selected_parent)
+                    .or(self.grid_entity);
+                if let Some(parent) = folder_parent {
+                    self.scene.set_parent(folder, parent);
+                }
+                if let Some(child) = selected {
+                    let protected = Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
                     let is_object_or_folder = self.scene.world.get::<Transform>(child).is_some()
                         && (self.scene.world.get::<MeshKindComp>(child).is_some()
                             || self.scene.world.get::<Folder>(child).is_some());
-                    if !protected && is_object_or_folder {
+                    if !protected && is_object_or_folder && Some(child) != folder_parent {
                         self.scene.reparent_preserve_world(child, folder);
                     }
                 }
@@ -129,29 +137,16 @@ impl App {
                 }
             }
             UiAction::PasteSelected => {
+                let parent = self.selected_container();
                 if let Some(snap) = &self.clipboard {
                     let state = self.state.as_mut().unwrap();
                     let offset = Vec3::new(2.0, 2.0, 0.0);
                     for root in &snap.roots {
-                        paste_node(
-                            &mut self.scene,
-                            &mut self.render_map,
-                            state,
-                            root,
-                            self.selected_container(),
-                            offset,
-                        );
+                        paste_node(&mut self.scene, &mut self.render_map, state, root, parent, offset);
                     }
                     self.selected = None;
                     self.selected_elements.clear();
-                    update_edit_handles(
-                        state,
-                        &mut self.scene,
-                        self.edit_mode,
-                        self.select_mode,
-                        self.selected,
-                        &mut self.edit_handles,
-                    );
+                    update_edit_handles(state, &mut self.scene, self.edit_mode, self.select_mode, self.selected, &mut self.edit_handles);
                 }
             }
             UiAction::SetOriginToCursorConfirmed => {
