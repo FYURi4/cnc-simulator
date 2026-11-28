@@ -169,7 +169,6 @@ pub struct DragState {
     pub pivot_screen: Vec2,
     pub screen_axis_dir: Vec2,
     pub axis_world_length: f32,
-    pub start_translation: Vec3,
     pub start_rotation: Quat,
     pub start_scale: Vec3,
     pub start_custom_verts: Option<Vec<Vec3>>,
@@ -218,8 +217,6 @@ pub enum UiAction {
     ConfirmDelete,
     CopySelected,
     PasteSelected,
-    CancelDelete,
-    DeleteSelected,
     SetOriginToCursorConfirmed,
 }
 
