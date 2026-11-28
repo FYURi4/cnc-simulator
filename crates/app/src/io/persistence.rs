@@ -7,6 +7,52 @@ use engine_render::mesh::{Mesh, MeshKind};
 use engine_render::state::{ObjectKind, State};
 use std::fs;
 
+
+pub fn save_project(scene: &mut Scene, path: &str, grid_settings: &GridSettings) -> Result<()> {
+    let project = ProjectFile {
+        format: "cnc-simulator-project".to_owned(),
+        version: 1,
+        grid_settings: grid_settings.clone(),
+        scene: capture_snapshot(scene),
+    };
+    fs::write(path, serde_json::to_string_pretty(&project)?)?;
+    Ok(())
+}
+
+pub fn load_project(
+    scene: &mut Scene,
+    render_map: &mut Vec<(Entity, usize)>,
+    state: &mut State,
+    path: &str,
+    grid_settings: &mut GridSettings,
+) -> Result<(Entity, Entity)> {
+    let data = fs::read_to_string(path)?;
+    let project: ProjectFile = serde_json::from_str(&data)?;
+    if project.format != "cnc-simulator-project" { anyhow::bail!("Unsupported project format: {}", project.format); }
+    if project.version != 1 { anyhow::bail!("Unsupported CNC project version: {}", project.version); }
+    *grid_settings = project.grid_settings;
+    load_saved_scene(scene, render_map, state, project.scene)
+}
+
+fn load_saved_scene(scene: &mut Scene, render_map: &mut Vec<(Entity, usize)>, state: &mut State, saved: SavedScene) -> Result<(Entity, Entity)> {
+    for (_, idx) in render_map.iter() { state.set_object_transform(*idx, glam::Mat4::from_scale(glam::Vec3::ZERO)); }
+    render_map.clear();
+    despawn_all(scene);
+    let mut new_grid = None;
+    let mut new_cursor = None;
+    for node in saved.roots {
+        let is_grid = node.name == "Grid";
+        let is_cursor = node.name == "3D Cursor";
+        let entity = spawn_saved_node(scene, render_map, state, node, None);
+        if is_grid { new_grid = Some(entity); }
+        if is_cursor { new_cursor = Some(entity); }
+    }
+    Ok((
+        new_grid.ok_or_else(|| anyhow::anyhow!("Project does not contain a root Grid"))?,
+        new_cursor.ok_or_else(|| anyhow::anyhow!("Project does not contain a 3D Cursor"))?,
+    ))
+}
+
 pub fn save_scene(scene: &mut Scene, path: &str) -> Result<()> {
     let snap = capture_snapshot(scene);
     let json = serde_json::to_string_pretty(&snap)?;

@@ -107,8 +107,12 @@ pub fn show_node(
     row_response.dnd_set_drag_payload(entity);
     if let Some(dragged) = row_response.dnd_release_payload::<Entity>() {
         let child = *dragged;
-        if child != entity {
-            *new_parent = Some((child, entity));
+        if child != entity && scene.get_name(child) != Some("Grid") && scene.get_name(child) != Some("3D Cursor") {
+            if scene.get_name(entity) == Some("Grid") {
+                *new_root = Some(child);
+            } else if is_folder {
+                *new_parent = Some((child, entity));
+            }
         }
     }
 }

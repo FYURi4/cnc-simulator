@@ -114,7 +114,8 @@ pub struct SnapSettings {
     pub increment: f32,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GridType {
     Grid,
     Dots,
@@ -122,12 +123,14 @@ pub enum GridType {
     DotsOnly,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GridUnit {
     Mm,
     M,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GridSettings {
     pub visible: bool,
     pub color: [f32; 4],
@@ -251,6 +254,14 @@ pub struct SavedNode {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SavedScene {
     pub roots: Vec<SavedNode>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ProjectFile {
+    pub format: String,
+    pub version: u32,
+    pub grid_settings: GridSettings,
+    pub scene: SavedScene,
 }
 
 pub struct History {

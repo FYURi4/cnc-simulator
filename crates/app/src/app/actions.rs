@@ -21,6 +21,20 @@ fn set_object_pivot(
 }
 
 impl App {
+    fn selected_container(&self) -> Option<bevy_ecs::prelude::Entity> {
+        if let Some(selected) = self.selected {
+            if self.scene.world.get::<Folder>(selected).is_some() {
+                return Some(selected);
+            }
+            if let Some(parent) = self.scene.world.get::<Parent>(selected).map(|p| p.0) {
+                if self.scene.world.get::<Folder>(parent).is_some() {
+                    return Some(parent);
+                }
+            }
+        }
+        self.grid_entity
+    }
+
     pub(super) fn apply_ui_action(&mut self, action: UiAction) {
         let Some(state) = self.state.as_mut() else {
             return;
@@ -28,11 +42,18 @@ impl App {
         match action {
             UiAction::None => {}
             UiAction::Save => {
-                let _ = save_scene(&mut self.scene, SAVE_PATH);
+                let path = self.current_project_path.as_deref().unwrap_or(&self.save_as_path).to_owned();
+                match save_project(&mut self.scene, &path, &self.grid_settings) {
+                    Ok(()) => self.current_project_path = Some(path),
+                    Err(error) => eprintln!("Failed to save project: {error}"),
+                }
             }
             UiAction::SaveAs => {
-                if !self.save_as_path.is_empty() {
-                    let _ = save_scene(&mut self.scene, &self.save_as_path);
+                if !self.save_as_path.trim().is_empty() {
+                    match save_project(&mut self.scene, &self.save_as_path, &self.grid_settings) {
+                        Ok(()) => self.current_project_path = Some(self.save_as_path.clone()),
+                        Err(error) => eprintln!("Failed to save project: {error}"),
+                    }
                 }
             }
             UiAction::Undo => self.do_undo(),
@@ -117,7 +138,7 @@ impl App {
                             &mut self.render_map,
                             state,
                             root,
-                            None,
+                            self.selected_container(),
                             offset,
                         );
                     }
@@ -170,10 +191,11 @@ impl App {
                 }
             }
             UiAction::Load => {
-                if std::path::PathBuf::from(SAVE_PATH).exists() {
-                    if let Ok((grid, cursor)) =
-                        load_scene(&mut self.scene, &mut self.render_map, state, SAVE_PATH)
-                    {
+                let path = self.save_as_path.clone();
+                if std::path::PathBuf::from(&path).exists() {
+                    match load_project(&mut self.scene, &mut self.render_map, state, &path, &mut self.grid_settings) {
+                        Ok((grid, cursor)) => {
+                            self.current_project_path = Some(path.clone());
                         self.grid_entity = Some(grid);
                         self.cursor_entity = Some(cursor);
                         self.selected = None;
@@ -190,12 +212,17 @@ impl App {
                             &mut self.edit_handles,
                         );
                         let snap = capture_snapshot(&mut self.scene);
+                        self.history = History::new();
                         self.history.record(snap);
+                        }
+                        Err(error) => eprintln!("Failed to open project: {error}"),
                     }
+                } else {
+                    eprintln!("Project file not found: {path}");
                 }
             }
             UiAction::AddCube => {
-                let parent = self.selected.or(self.grid_entity);
+                let parent = self.selected_container();
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,
@@ -207,7 +234,7 @@ impl App {
                 self.history.record(capture_snapshot(&mut self.scene));
             }
             UiAction::AddPlane => {
-                let parent = self.selected.or(self.grid_entity);
+                let parent = self.selected_container();
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,
@@ -219,7 +246,7 @@ impl App {
                 self.history.record(capture_snapshot(&mut self.scene));
             }
             UiAction::AddCylinder => {
-                let parent = self.selected.or(self.grid_entity);
+                let parent = self.selected_container();
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,
@@ -231,7 +258,7 @@ impl App {
                 self.history.record(capture_snapshot(&mut self.scene));
             }
             UiAction::AddSphere => {
-                let parent = self.selected.or(self.grid_entity);
+                let parent = self.selected_container();
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,
@@ -243,7 +270,7 @@ impl App {
                 self.history.record(capture_snapshot(&mut self.scene));
             }
             UiAction::AddPyramid => {
-                let parent = self.selected.or(self.grid_entity);
+                let parent = self.selected_container();
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,

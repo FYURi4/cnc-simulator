@@ -15,6 +15,7 @@ impl App {
         delete_confirm: &mut bool,
         delete_confirm_pos: Vec2,
         show_save_as: &mut bool,
+        show_open: &mut bool,
         save_as_path: &mut String,
         show_color_picker: &mut bool,
         color_picker_hex: &mut String,
@@ -82,6 +83,24 @@ impl App {
                         if ui.button("Cancel").clicked() {
                             *show_save_as = false;
                         }
+                    });
+                });
+        }
+
+
+        if *show_open {
+            egui::Window::new("Open CNC Project")
+                .default_size([360.0, 110.0])
+                .show(ctx, |ui| {
+                    ui.label("Project file (.cncproj):");
+                    ui.text_edit_singleline(save_as_path);
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui.button("Open").clicked() {
+                            *ui_action = UiAction::Load;
+                            *show_open = false;
+                        }
+                        if ui.button("Cancel").clicked() { *show_open = false; }
                     });
                 });
         }

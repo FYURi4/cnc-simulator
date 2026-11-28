@@ -17,6 +17,7 @@ impl App {
         snap: &mut SnapSettings,
         grid_settings: &mut GridSettings,
         show_save_as: &mut bool,
+        show_open: &mut bool,
         show_color_picker: &mut bool,
         color_picker_hex: &mut String,
         selected: Option<bevy_ecs::prelude::Entity>,
@@ -34,8 +35,8 @@ impl App {
                         *show_save_as = true;
                         ui.close();
                     }
-                    if ui.button("📂 Load").clicked() {
-                        *ui_action = UiAction::Load;
+                    if ui.button("📂 Open Project...").clicked() {
+                        *show_open = true;
                         ui.close();
                     }
                     if ui.button("⚙ Load G-code").clicked() {

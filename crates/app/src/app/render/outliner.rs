@@ -27,13 +27,6 @@ impl App {
                     }
                 });
                 ui.separator();
-                let root_response = ui.add_sized(
-                    [ui.available_width(), 22.0],
-                    egui::Button::new("↥ Scene Root").fill(egui::Color32::from_gray(35)),
-                );
-                if let Some(dragged) = root_response.dnd_release_payload::<Entity>() {
-                    *new_root = Some(*dragged);
-                }
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let roots = {
                         let mut roots_vec = Vec::new();
@@ -43,10 +36,9 @@ impl App {
                         for e in q.iter(&scene.world) {
                             roots_vec.push(e);
                         }
-                        roots_vec
-                            .into_iter()
-                            .filter(|e| scene.get_name(*e) != Some("3D Cursor"))
-                            .collect::<Vec<_>>()
+                        roots_vec.iter().copied()
+                            .find(|e| scene.get_name(*e) == Some("Grid"))
+                            .into_iter().collect::<Vec<_>>()
                     };
                     for root in roots {
                         show_node(

@@ -54,6 +54,8 @@ pub struct App {
     pub color_picker_hex: String,
     pub save_as_path: String,
     pub show_save_as: bool,
+    pub show_open: bool,
+    pub current_project_path: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -144,8 +146,10 @@ impl App {
             pending_redo: false,
             show_color_picker: false,
             color_picker_hex: String::new(),
-            save_as_path: String::from("scene.json"),
+            save_as_path: String::from("untitled.cncproj"),
             show_save_as: false,
+            show_open: false,
+            current_project_path: None,
         }
     }
 }

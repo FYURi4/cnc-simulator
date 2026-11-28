@@ -42,6 +42,7 @@ impl App {
         let viewport_size = self.viewport_size;
         let grid_settings = &mut self.grid_settings;
         let show_save_as = &mut self.show_save_as;
+        let show_open = &mut self.show_open;
         let show_color_picker = &mut self.show_color_picker;
         let color_picker_hex = &mut self.color_picker_hex;
         let save_as_path = &mut self.save_as_path;
@@ -94,6 +95,7 @@ impl App {
                 snap,
                 grid_settings,
                 show_save_as,
+                show_open,
                 show_color_picker,
                 color_picker_hex,
                 selected,
@@ -152,6 +154,7 @@ impl App {
                 delete_confirm,
                 delete_confirm_pos,
                 show_save_as,
+                show_open,
                 save_as_path,
                 show_color_picker,
                 color_picker_hex,
@@ -201,18 +204,20 @@ impl App {
         self.editing_name = editing_name;
 
         if let Some(child) = new_root {
-            let protected_child =
-                Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
-            if !protected_child && self.scene.detach_preserve_world(child) {
-                self.history.record(capture_snapshot(&mut self.scene));
+            let protected_child = Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
+            if !protected_child {
+                if let Some(grid) = self.grid_entity {
+                    if child != grid && self.scene.reparent_preserve_world(child, grid) {
+                        self.history.record(capture_snapshot(&mut self.scene));
+                    }
+                }
             }
         }
 
         if let Some((child, parent)) = new_parent {
             let protected_child =
                 Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
-            let protected_parent =
-                Some(parent) == self.grid_entity || Some(parent) == self.cursor_entity;
+            let protected_parent = Some(parent) == self.cursor_entity;
             if !protected_child
                 && !protected_parent
                 && self.scene.reparent_preserve_world(child, parent)
