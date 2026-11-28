@@ -45,11 +45,7 @@ impl App {
                 if let Some(child) = self.selected {
                     let protected =
                         Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
-                    let is_object_or_folder = self
-                        .scene
-                        .world
-                        .get::<Transform>(child)
-                        .is_some()
+                    let is_object_or_folder = self.scene.world.get::<Transform>(child).is_some()
                         && (self.scene.world.get::<MeshKindComp>(child).is_some()
                             || self.scene.world.get::<Folder>(child).is_some());
                     if !protected && is_object_or_folder {

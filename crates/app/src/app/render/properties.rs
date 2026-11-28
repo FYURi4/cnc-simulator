@@ -39,18 +39,19 @@ impl App {
                     }
                     ui.separator();
 
-                    let mesh_base_dimensions = scene.world.get::<CustomMesh>(sel).and_then(|mesh| {
-                        if mesh.vertices.is_empty() {
-                            return None;
-                        }
-                        let mut min = Vec3::splat(f32::INFINITY);
-                        let mut max = Vec3::splat(f32::NEG_INFINITY);
-                        for vertex in &mesh.vertices {
-                            min = min.min(*vertex);
-                            max = max.max(*vertex);
-                        }
-                        Some((max - min) * 1000.0)
-                    });
+                    let mesh_base_dimensions =
+                        scene.world.get::<CustomMesh>(sel).and_then(|mesh| {
+                            if mesh.vertices.is_empty() {
+                                return None;
+                            }
+                            let mut min = Vec3::splat(f32::INFINITY);
+                            let mut max = Vec3::splat(f32::NEG_INFINITY);
+                            for vertex in &mesh.vertices {
+                                min = min.min(*vertex);
+                                max = max.max(*vertex);
+                            }
+                            Some((max - min) * 1000.0)
+                        });
                     if edit_m == EditMode::Edit && !selected_elements.is_empty() {
                         if ui.button("Set Pivot to Active Element").clicked() {
                             *ui_action = UiAction::SetOriginToSelection;
@@ -184,7 +185,9 @@ impl App {
                                 ui.label("Dimensions (mm):");
                                 let mut dimensions = base_size * t.scale.abs();
                                 let mut size_changed = false;
-                                egui::Grid::new("dimensions_grid").num_columns(2).show(ui, |ui| {
+                                egui::Grid::new("dimensions_grid")
+                                    .num_columns(2)
+                                    .show(ui, |ui| {
                                     ui.label("X");
                                     let response = ui.add(
                                         egui::DragValue::new(&mut dimensions.x)
@@ -227,15 +230,27 @@ impl App {
                                 });
                                 if size_changed {
                                     if base_size.x > 1e-6 {
-                                        let sign = if t.scale.x.is_sign_negative() { -1.0 } else { 1.0 };
+                                        let sign = if t.scale.x.is_sign_negative() {
+                                            -1.0
+                                        } else {
+                                            1.0
+                                        };
                                         t.scale.x = sign * dimensions.x / base_size.x;
                                     }
                                     if base_size.y > 1e-6 {
-                                        let sign = if t.scale.y.is_sign_negative() { -1.0 } else { 1.0 };
+                                        let sign = if t.scale.y.is_sign_negative() {
+                                            -1.0
+                                        } else {
+                                            1.0
+                                        };
                                         t.scale.y = sign * dimensions.y / base_size.y;
                                     }
                                     if base_size.z > 1e-6 {
-                                        let sign = if t.scale.z.is_sign_negative() { -1.0 } else { 1.0 };
+                                        let sign = if t.scale.z.is_sign_negative() {
+                                            -1.0
+                                        } else {
+                                            1.0
+                                        };
                                         t.scale.z = sign * dimensions.z / base_size.z;
                                     }
                                 }
