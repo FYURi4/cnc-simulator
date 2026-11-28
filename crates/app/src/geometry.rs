@@ -8,6 +8,6 @@ pub use spatial::{
     ray_from_screen, ray_triangle, set_axis_comp, world_to_screen,
 };
 pub use topology::{
-    build_mesh_vertices, get_current_edges, get_current_faces, get_edges, get_faces,
+    build_mesh_vertices, get_current_edges, get_current_faces,
     get_handles_for_mode,
 };
