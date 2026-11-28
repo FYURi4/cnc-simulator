@@ -125,7 +125,6 @@ pub fn handle_lmb_press(
                 pivot_screen,
                 screen_axis_dir,
                 axis_world_length,
-                start_translation: transform.translation,
                 start_rotation: transform.rotation,
                 start_scale: transform.scale,
                 start_custom_verts: scene
