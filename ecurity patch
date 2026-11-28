@@ -1,0 +1,29 @@
+warning: in the working copy of 'Cargo.lock', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/Cargo.lock b/Cargo.lock[m
+[1mindex 367aee9..411ad5b 100644[m
+[1m--- a/Cargo.lock[m
+[1m+++ b/Cargo.lock[m
+[36m@@ -1060,9 +1060,9 @@[m [mchecksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"[m
+ [m
+ [[package]][m
+ name = "form_urlencoded"[m
+[31m-version = "1.2.2"[m
+[32m+[m[32mversion = "1.2.3"[m
+ source = "registry+https://github.com/rust-lang/crates.io-index"[m
+[31m-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"[m
+[32m+[m[32mchecksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"[m
+ dependencies = [[m
+  "percent-encoding",[m
+ ][m
+[36m@@ -2981,9 +2981,9 @@[m [mchecksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"[m
+ [m
+ [[package]][m
+ name = "url"[m
+[31m-version = "2.5.8"[m
+[32m+[m[32mversion = "2.5.9"[m
+ source = "registry+https://github.com/rust-lang/crates.io-index"[m
+[31m-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"[m
+[32m+[m[32mchecksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"[m
+ dependencies = [[m
+  "form_urlencoded",[m
+  "idna",[m
