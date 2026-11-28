@@ -25,7 +25,8 @@ pub fn pick_gizmo(ray_o: Vec3, ray_d: Vec3, world_pos: Vec3, scale: f32) -> Opti
             amax,
         ) {
             if best.is_none_or(|(_, bt)| t < bt) {
-            best = Some((i, t));
+                best = Some((i, t));
+            }
         }
     }
     best.map(|(i, _)| i)
@@ -46,10 +47,10 @@ pub fn pick_gizmo_ring(ray_o: Vec3, ray_d: Vec3, world_pos: Vec3, scale: f32) ->
         }
         let offset = (ray_o + ray_d * t) - world_pos;
         let in_plane = offset - *normal * offset.dot(*normal);
-        if (in_plane.length() - ring_radius).abs() < hit_tolerance {
-            if best.map_or(true, |(_, bt)| t < bt) {
-                best = Some((i, t));
-            }
+        if (in_plane.length() - ring_radius).abs() < hit_tolerance
+            && best.is_none_or(|(_, bt)| t < bt)
+        {
+            best = Some((i, t));
         }
     }
     best.map(|(i, _)| i)
