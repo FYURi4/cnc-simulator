@@ -4,7 +4,10 @@ use crate::types::{
 };
 
 impl App {
-    #[expect(clippy::too_many_arguments, reason = "The top bar edits independent settings and actions owned by the app.")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The top bar edits independent settings and actions owned by the app.",
+    )]
     pub(super) fn draw_top_bar(
         ctx: &egui::Context,
         ui_action: &mut UiAction,
