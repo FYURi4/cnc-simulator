@@ -4,7 +4,7 @@ use crate::io::*;
 use crate::types::*;
 use engine_core::{Parent, Transform};
 use engine_render::mesh::MeshKind;
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 
 impl App {
     pub(super) fn apply_ui_action(&mut self, action: UiAction) {
