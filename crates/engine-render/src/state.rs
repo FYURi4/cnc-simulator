@@ -605,7 +605,7 @@ impl State {
 
         let mut cmds = cmd_buffers;
         cmds.push(encoder.finish());
-        self.queue.submit(cmds.into_iter());
+        self.queue.submit(cmds);
         output.present();
         Ok(())
     }

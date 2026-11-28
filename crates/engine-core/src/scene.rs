@@ -92,3 +92,9 @@ impl Scene {
         self.world.get::<GlobalTransform>(entity).map(|g| g.0)
     }
 }
+
+impl Default for Scene {
+    fn default() -> Self {
+        Self::new()
+    }
+}
