@@ -1,5 +1,4 @@
 use crate::app::App;
-use egui;
 
 impl App {
     pub(super) fn draw_numeric_overlay(
