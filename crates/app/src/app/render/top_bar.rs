@@ -187,8 +187,8 @@ impl App {
                             ui.selectable_value(ui_view, ViewDirection::Iso, "Iso");
                         });
                     if selected.is_some() && ui.button("📍 Set Origin").clicked() {
-                            *ui_action = UiAction::SetOriginToCursorConfirmed;
-                            ui.close();
+                        *ui_action = UiAction::SetOriginToCursorConfirmed;
+                        ui.close();
                     }
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
