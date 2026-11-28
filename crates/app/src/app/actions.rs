@@ -75,8 +75,7 @@ impl App {
                                 parent_matrix.inverse().transform_point3(cursor_world)
                             })
                             .unwrap_or(cursor_world);
-                        if let Some(mut transform) =
-                            self.scene.world.get_mut::<Transform>(selected)
+                        if let Some(mut transform) = self.scene.world.get_mut::<Transform>(selected)
                         {
                             transform.translation = local_position;
                         }
