@@ -118,8 +118,8 @@ impl App {
                         start.w,
                     )
                     .normalize();
-                    let current_angle =
-                        2.0 * (Vec3::new(twist.x, twist.y, twist.z).dot(axis_in_parent)).atan2(twist.w);
+                    let current_angle = 2.0
+                        * (Vec3::new(twist.x, twist.y, twist.z).dot(axis_in_parent)).atan2(twist.w);
                     self.world_rotation_delta_local(
                         op.entity,
                         op.start_rotation,
