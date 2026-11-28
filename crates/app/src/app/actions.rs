@@ -20,21 +20,25 @@ fn set_object_pivot(
     }
 }
 
-impl App {
-    fn selected_container(&self) -> Option<bevy_ecs::prelude::Entity> {
-        if let Some(selected) = self.selected {
-            if self.scene.world.get::<Folder>(selected).is_some() {
-                return Some(selected);
-            }
-            if let Some(parent) = self.scene.world.get::<Parent>(selected).map(|p| p.0) {
-                if self.scene.world.get::<Folder>(parent).is_some() {
-                    return Some(parent);
-                }
+fn selected_container(
+    scene: &engine_core::Scene,
+    selected: Option<bevy_ecs::prelude::Entity>,
+    grid: Option<bevy_ecs::prelude::Entity>,
+) -> Option<bevy_ecs::prelude::Entity> {
+    if let Some(selected) = selected {
+        if scene.world.get::<Folder>(selected).is_some() {
+            return Some(selected);
+        }
+        if let Some(parent) = scene.world.get::<Parent>(selected).map(|p| p.0) {
+            if scene.world.get::<Folder>(parent).is_some() {
+                return Some(parent);
             }
         }
-        self.grid_entity
     }
+    grid
+}
 
+impl App {
     pub(super) fn apply_ui_action(&mut self, action: UiAction) {
         let Some(state) = self.state.as_mut() else {
             return;
@@ -137,7 +141,7 @@ impl App {
                 }
             }
             UiAction::PasteSelected => {
-                let parent = self.selected_container();
+                let parent = selected_container(&self.scene, self.selected, self.grid_entity);
                 if let Some(snap) = &self.clipboard {
                     let state = self.state.as_mut().unwrap();
                     let offset = Vec3::new(2.0, 2.0, 0.0);
@@ -217,7 +221,7 @@ impl App {
                 }
             }
             UiAction::AddCube => {
-                let parent = self.selected_container();
+                let parent = selected_container(&self.scene, self.selected, self.grid_entity);
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,
@@ -229,7 +233,7 @@ impl App {
                 self.history.record(capture_snapshot(&mut self.scene));
             }
             UiAction::AddPlane => {
-                let parent = self.selected_container();
+                let parent = selected_container(&self.scene, self.selected, self.grid_entity);
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,
@@ -241,7 +245,7 @@ impl App {
                 self.history.record(capture_snapshot(&mut self.scene));
             }
             UiAction::AddCylinder => {
-                let parent = self.selected_container();
+                let parent = selected_container(&self.scene, self.selected, self.grid_entity);
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,
@@ -253,7 +257,7 @@ impl App {
                 self.history.record(capture_snapshot(&mut self.scene));
             }
             UiAction::AddSphere => {
-                let parent = self.selected_container();
+                let parent = selected_container(&self.scene, self.selected, self.grid_entity);
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,
@@ -265,7 +269,7 @@ impl App {
                 self.history.record(capture_snapshot(&mut self.scene));
             }
             UiAction::AddPyramid => {
-                let parent = self.selected_container();
+                let parent = selected_container(&self.scene, self.selected, self.grid_entity);
                 let e = add_mesh_node(
                     &mut self.scene,
                     &mut self.render_map,
