@@ -26,7 +26,7 @@ impl App {
                         let cursor_scale =
                             (world_view_height * 28.0 / self.viewport_size.y.max(1.0) / 0.4)
                                 .clamp(1e-5, 1e5);
-                        mat = mat * Mat4::from_scale(Vec3::splat(cursor_scale));
+                        mat *= Mat4::from_scale(Vec3::splat(cursor_scale));
                     }
                     state.set_object_transform(*idx, mat);
                 }
