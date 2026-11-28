@@ -4,7 +4,7 @@ use crate::types::*;
 use bevy_ecs::prelude::*;
 use engine_core::{Scene, Transform};
 use engine_render::state::State;
-use glam::{Mat4, Quat, Vec2, Vec3};
+use glam::{Vec2, Vec3};
 use std::collections::HashSet;
 pub fn handle_lmb_press(
     state: &mut State,
