@@ -210,8 +210,9 @@ impl App {
                         self.drag_start = Some(self.input.cursor_pos);
                         self.drag_end = Some(self.input.cursor_pos);
                     } else {
-                        // FIX: LMB подтверждает G/R/S с записью истории
-                        if self.confirm_transform_if_changed("LMB") {
+                        // An active transform remains a preview until Enter is pressed.
+                        // Do not let a mouse click silently commit it.
+                        if self.transform_operation.is_some() {
                             return;
                         }
                         handle_lmb_press(
