@@ -11,7 +11,9 @@ pub struct Scene {
 
 impl Scene {
     pub fn new() -> Self {
-        Self { world: World::new() }
+        Self {
+            world: World::new(),
+        }
     }
 
     pub fn spawn(&mut self, transform: Transform) -> Entity {
