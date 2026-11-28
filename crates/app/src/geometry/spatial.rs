@@ -10,7 +10,7 @@ use crate::types::*;
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "Snap evaluation needs scene, grid, and renderer context.",
+    reason = "Snap evaluation needs scene, grid, and renderer context"
 )]
 pub fn apply_snap(
     pos: Vec3,
