@@ -450,9 +450,9 @@ impl App {
                                                 center /= verts.len() as f32;
                                                 cm.vertices[target] = center;
                                                 for face in &mut faces {
-                                                    for i in 0..face.len() {
-                                                        if verts[1..].contains(&face[i]) {
-                                                            face[i] = target;
+                                                    for vertex in &mut face {
+                                                        if verts[1..].contains(vertex) {
+                                                            *vertex = target;
                                                         }
                                                     }
                                                     let mut unique_face = Vec::new();
