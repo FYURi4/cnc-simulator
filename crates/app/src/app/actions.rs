@@ -48,9 +48,6 @@ impl App {
                     }
                 }
             }
-            UiAction::CancelDelete => {
-                self.delete_confirm = false;
-            }
             UiAction::CopySelected => {
                 if let Some(sel) = self.selected {
                     let snap = capture_selected(&mut self.scene, sel);
@@ -220,12 +217,6 @@ impl App {
                 );
                 self.selected = Some(e);
                 self.history.record(capture_snapshot(&mut self.scene));
-            }
-            UiAction::DeleteSelected => {
-                if self.selected.is_some() {
-                    self.delete_confirm = true;
-                    self.delete_confirm_pos = Vec2::new(640.0, 360.0);
-                }
             }
             UiAction::SetOriginToCursor => {
                 if let Some(sel) = self.selected {
