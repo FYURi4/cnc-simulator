@@ -1,7 +1,6 @@
 use crate::app::App;
 use crate::ui::show_node;
 use bevy_ecs::prelude::*;
-use egui;
 use engine_core::{Parent, Scene};
 
 impl App {
