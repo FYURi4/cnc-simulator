@@ -12,6 +12,7 @@ pub fn apply_snap(
     pos: Vec3,
     start_pos: Vec3,
     axis: Vec3,
+    cursor_world: Option<Vec3>,
     snap: &SnapSettings,
     grid: &GridSettings,
     scene: &Scene,
@@ -25,6 +26,17 @@ pub fn apply_snap(
 
     let direction = axis.normalize_or_zero();
     match snap.target {
+        SnapTarget::Cursor => {
+            let Some(cursor_world) = cursor_world else {
+                return pos;
+            };
+            if direction.length_squared() < 1e-6 {
+                cursor_world
+            } else {
+                let distance = (cursor_world - start_pos).dot(direction);
+                start_pos + direction * distance
+            }
+        }
         SnapTarget::Increment => {
             let step = snap.increment.max(1e-6);
             let distance = (pos - start_pos).dot(direction);

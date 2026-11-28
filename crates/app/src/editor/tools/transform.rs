@@ -222,7 +222,13 @@ impl App {
             return;
         };
 
-        let pivot_world = global_matrix.transform_point3(Vec3::ZERO);
+        let pivot_offset = self
+            .scene
+            .world
+            .get::<Transform>(entity)
+            .map(|transform| transform.pivot_offset)
+            .unwrap_or(Vec3::ZERO);
+        let pivot_world = global_matrix.transform_point3(pivot_offset);
         let pivot_screen = world_to_screen(&state.camera, self.viewport_size, pivot_world);
 
         self.transform_operation = Some(TransformOperation {

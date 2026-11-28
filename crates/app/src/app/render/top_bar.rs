@@ -83,6 +83,10 @@ impl App {
                         *ui_action = UiAction::PasteSelected;
                         ui.close();
                     }
+                    if selected.is_some() && ui.button("Selection to 3D Cursor").clicked() {
+                        *ui_action = UiAction::SelectionToCursor;
+                        ui.close();
+                    }
                 });
                 ui.menu_button("Transform", |ui| {
                     ui.label("Coordinate space");
@@ -215,6 +219,7 @@ impl App {
                             ui.selectable_value(&mut snap.target, SnapTarget::Origin, "Origin");
                             ui.selectable_value(&mut snap.target, SnapTarget::Vertex, "Vertex");
                             ui.selectable_value(&mut snap.target, SnapTarget::Edge, "Edge");
+                            ui.selectable_value(&mut snap.target, SnapTarget::Cursor, "3D Cursor");
                         });
                 });
             });

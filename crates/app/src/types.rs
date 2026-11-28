@@ -102,6 +102,7 @@ pub enum SnapTarget {
     Origin,
     Vertex,
     Edge,
+    Cursor,
 }
 
 pub struct SnapSettings {
@@ -226,6 +227,7 @@ pub enum UiAction {
     ConfirmDelete,
     CopySelected,
     PasteSelected,
+    SelectionToCursor,
     SetOriginToCursorConfirmed,
     SetOriginToSelection,
 }

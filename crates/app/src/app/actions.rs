@@ -2,7 +2,7 @@ use crate::app::App;
 use crate::editor::*;
 use crate::io::*;
 use crate::types::*;
-use engine_core::Transform;
+use engine_core::{Parent, Transform};
 use engine_render::mesh::MeshKind;
 use glam::Vec3;
 
@@ -13,7 +13,9 @@ fn set_object_pivot(
 ) {
     if let Some(mut transform) = scene.world.get_mut::<Transform>(entity) {
         let delta = pivot - transform.pivot_offset;
-        transform.translation += transform.rotation * (transform.scale * delta);
+        let rotation = transform.rotation;
+        let scale = transform.scale;
+        transform.translation += rotation * (scale * delta);
         transform.pivot_offset = pivot;
     }
 }
@@ -56,6 +58,28 @@ impl App {
                             self.edit_handles.clear();
                         }
                         delete_entity(&mut self.scene, &mut self.render_map, state, e);
+                        self.history.record(capture_snapshot(&mut self.scene));
+                    }
+                }
+            }
+            UiAction::SelectionToCursor => {
+                if let (Some(selected), Some(cursor)) = (self.selected, self.cursor_entity) {
+                    if let Some(cursor_matrix) = self.scene.global_matrix(cursor) {
+                        let cursor_world = cursor_matrix.w_axis.truncate();
+                        let local_position = self
+                            .scene
+                            .world
+                            .get::<Parent>(selected)
+                            .and_then(|parent| self.scene.global_matrix(parent.0))
+                            .map(|parent_matrix| {
+                                parent_matrix.inverse().transform_point3(cursor_world)
+                            })
+                            .unwrap_or(cursor_world);
+                        if let Some(mut transform) =
+                            self.scene.world.get_mut::<Transform>(selected)
+                        {
+                            transform.translation = local_position;
+                        }
                         self.history.record(capture_snapshot(&mut self.scene));
                     }
                 }

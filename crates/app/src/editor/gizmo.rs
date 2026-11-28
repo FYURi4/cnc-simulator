@@ -88,9 +88,14 @@ pub fn update_gizmo_positions(
         return;
     }
 
+    let pivot_offset = scene
+        .world
+        .get::<engine_core::Transform>(sel)
+        .map(|transform| transform.pivot_offset)
+        .unwrap_or(Vec3::ZERO);
     let mut pos = scene
         .global_matrix(sel)
-        .map(|m| m.w_axis.truncate())
+        .map(|matrix| matrix.transform_point3(pivot_offset))
         .unwrap_or(Vec3::ZERO);
 
     if edit_mode == EditMode::Edit {

@@ -62,11 +62,16 @@ impl App {
                                 d.dot(drag.screen_axis_dir) / len_sq * drag.axis_world_length;
                             let mut new_world = drag.start_world_pos + drag.axis * proj;
                             if self.snap.enabled {
+                                let cursor_world = self
+                                    .cursor_entity
+                                    .and_then(|cursor| self.scene.global_matrix(cursor))
+                                    .map(|matrix| matrix.w_axis.truncate());
                                 let state = self.state.as_ref().unwrap();
                                 new_world = apply_snap(
                                     new_world,
                                     drag.start_world_pos,
                                     drag.axis,
+                                    cursor_world,
                                     &self.snap,
                                     &self.grid_settings,
                                     &self.scene,
@@ -123,11 +128,16 @@ impl App {
                                     d.dot(drag.screen_axis_dir) / len_sq * drag.axis_world_length;
                                 let mut new_world = drag.start_world_pos + drag.axis * proj;
                                 if self.snap.enabled {
+                                    let cursor_world = self
+                                        .cursor_entity
+                                        .and_then(|cursor| self.scene.global_matrix(cursor))
+                                        .map(|matrix| matrix.w_axis.truncate());
                                     let state = self.state.as_ref().unwrap();
                                     new_world = apply_snap(
                                         new_world,
                                         drag.start_world_pos,
                                         drag.axis,
+                                        cursor_world,
                                         &self.snap,
                                         &self.grid_settings,
                                         &self.scene,
