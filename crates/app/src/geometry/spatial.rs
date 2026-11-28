@@ -238,7 +238,7 @@ pub fn pick_object(
                 if let Some(t) = ray_triangle(ray_o, ray_d, p0, p1, p2)
                     .or_else(|| ray_triangle(ray_o, ray_d, p0, p2, p3))
                 {
-                    if best.map_or(true, |(_, d)| t < d) {
+                    if best.is_none_or(|(_, d)| t < d) {
                         best = Some((*entity, t));
                     }
                 }
@@ -249,7 +249,7 @@ pub fn pick_object(
                 if let Some(t) = ray_aabb(lo, ld, Vec3::splat(-0.05), Vec3::splat(0.05)) {
                     let world_hit = gt.transform_point3(lo + ld * t);
                     let dist = (world_hit - ray_o).length();
-                    if best.map_or(true, |(_, d)| dist < d) {
+                    if best.is_none_or(|(_, d)| dist < d) {
                         best = Some((*entity, dist));
                     }
                 }
