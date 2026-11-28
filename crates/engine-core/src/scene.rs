@@ -102,6 +102,43 @@ impl Scene {
         true
     }
 
+    /// Detaches an entity from its parent while preserving its world transform.
+    pub fn detach_preserve_world(&mut self, child: Entity) -> bool {
+        if self.world.get_entity(child).is_err() {
+            return false;
+        }
+        let Some(old_parent) = self.world.get::<Parent>(child).map(|p| p.0) else {
+            return true;
+        };
+
+        self.update();
+        let Some(child_world) = self.global_matrix(child) else {
+            return false;
+        };
+        let (scale, rotation, matrix_translation) = child_world.to_scale_rotation_translation();
+        let pivot = self
+            .world
+            .get::<Transform>(child)
+            .map(|t| t.pivot_offset)
+            .unwrap_or_default();
+        let translation = matrix_translation + rotation * (scale * pivot);
+
+        if let Some(mut transform) = self.world.get_mut::<Transform>(child) {
+            transform.translation = translation;
+            transform.rotation = rotation;
+            transform.scale = scale;
+        } else {
+            return false;
+        }
+
+        if let Some(mut children) = self.world.get_mut::<Children>(old_parent) {
+            children.0.retain(|entity| *entity != child);
+        }
+        self.world.entity_mut(child).remove::<Parent>();
+        self.update();
+        true
+    }
+
     pub fn set_name(&mut self, entity: Entity, name: impl Into<String>) {
         self.world.entity_mut(entity).insert(Name::new(name));
     }

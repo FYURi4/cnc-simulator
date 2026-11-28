@@ -10,8 +10,10 @@ impl App {
         scene: &mut Scene,
         selected: Option<Entity>,
         editing: &mut Option<Entity>,
+        editing_name: &mut String,
         new_selection: &mut Option<Entity>,
         new_parent: &mut Option<(Entity, Entity)>,
+        new_root: &mut Option<Entity>,
         ui_action: &mut UiAction,
     ) {
         egui::TopBottomPanel::top("outliner")
@@ -25,6 +27,13 @@ impl App {
                     }
                 });
                 ui.separator();
+                let root_response = ui.add_sized(
+                    [ui.available_width(), 22.0],
+                    egui::Button::new("↥ Scene Root").fill(egui::Color32::from_gray(35)),
+                );
+                if let Some(dragged) = root_response.dnd_release_payload::<Entity>() {
+                    *new_root = Some(*dragged);
+                }
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let roots = {
                         let mut roots_vec = Vec::new();
@@ -46,8 +55,10 @@ impl App {
                             root,
                             selected,
                             editing,
+                            editing_name,
                             new_selection,
                             new_parent,
+                            new_root,
                         );
                     }
                 });

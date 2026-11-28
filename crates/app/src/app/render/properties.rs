@@ -39,7 +39,7 @@ impl App {
                     }
                     ui.separator();
 
-                    let object_dimensions = scene.world.get::<CustomMesh>(sel).and_then(|mesh| {
+                    let mesh_base_dimensions = scene.world.get::<CustomMesh>(sel).and_then(|mesh| {
                         if mesh.vertices.is_empty() {
                             return None;
                         }
@@ -49,22 +49,8 @@ impl App {
                             min = min.min(*vertex);
                             max = max.max(*vertex);
                         }
-                        let scale = scene
-                            .world
-                            .get::<Transform>(sel)
-                            .map(|t| t.scale.abs())
-                            .unwrap_or(Vec3::ONE);
-                        Some((max - min) * scale * 1000.0)
+                        Some((max - min) * 1000.0)
                     });
-                    if let Some(size) = object_dimensions {
-                        ui.label("Dimensions:");
-                        ui.horizontal(|ui| {
-                            ui.label(format!("X: {:.3} mm", size.x));
-                            ui.label(format!("Y: {:.3} mm", size.y));
-                            ui.label(format!("Z: {:.3} mm", size.z));
-                        });
-                        ui.separator();
-                    }
                     if edit_m == EditMode::Edit && !selected_elements.is_empty() {
                         if ui.button("Set Pivot to Active Element").clicked() {
                             *ui_action = UiAction::SetOriginToSelection;
@@ -194,7 +180,67 @@ impl App {
                                 t.translation += rotation * (scale * delta);
                                 t.pivot_offset = new_pivot;
                             }
-                            ui.separator();
+                            if let Some(base_size) = mesh_base_dimensions {
+                                ui.label("Dimensions (mm):");
+                                let mut dimensions = base_size * t.scale.abs();
+                                let mut size_changed = false;
+                                egui::Grid::new("dimensions_grid").num_columns(2).show(ui, |ui| {
+                                    ui.label("X");
+                                    let response = ui.add(
+                                        egui::DragValue::new(&mut dimensions.x)
+                                            .speed(0.1)
+                                            .range(0.001..=1_000_000.0)
+                                            .suffix(" mm"),
+                                    );
+                                    size_changed |= response.changed();
+                                    if response.drag_stopped() || response.lost_focus() {
+                                        *pending_history_record = true;
+                                    }
+                                    ui.end_row();
+
+                                    ui.label("Y");
+                                    let response = ui.add_enabled(
+                                        base_size.y > 1e-6,
+                                        egui::DragValue::new(&mut dimensions.y)
+                                            .speed(0.1)
+                                            .range(0.001..=1_000_000.0)
+                                            .suffix(" mm"),
+                                    );
+                                    size_changed |= response.changed();
+                                    if response.drag_stopped() || response.lost_focus() {
+                                        *pending_history_record = true;
+                                    }
+                                    ui.end_row();
+
+                                    ui.label("Z");
+                                    let response = ui.add(
+                                        egui::DragValue::new(&mut dimensions.z)
+                                            .speed(0.1)
+                                            .range(0.001..=1_000_000.0)
+                                            .suffix(" mm"),
+                                    );
+                                    size_changed |= response.changed();
+                                    if response.drag_stopped() || response.lost_focus() {
+                                        *pending_history_record = true;
+                                    }
+                                    ui.end_row();
+                                });
+                                if size_changed {
+                                    if base_size.x > 1e-6 {
+                                        let sign = if t.scale.x.is_sign_negative() { -1.0 } else { 1.0 };
+                                        t.scale.x = sign * dimensions.x / base_size.x;
+                                    }
+                                    if base_size.y > 1e-6 {
+                                        let sign = if t.scale.y.is_sign_negative() { -1.0 } else { 1.0 };
+                                        t.scale.y = sign * dimensions.y / base_size.y;
+                                    }
+                                    if base_size.z > 1e-6 {
+                                        let sign = if t.scale.z.is_sign_negative() { -1.0 } else { 1.0 };
+                                        t.scale.z = sign * dimensions.z / base_size.z;
+                                    }
+                                }
+                                ui.separator();
+                            }
                             ui.label("Scale");
                             egui::Grid::new("scale_grid").num_columns(3).show(ui, |ui| {
                                 ui.label("Scale X");

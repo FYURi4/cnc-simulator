@@ -22,6 +22,8 @@ impl App {
         let mut scene = std::mem::replace(&mut self.scene, Scene::new());
         let selected = self.selected;
         let mut editing = self.editing_entity;
+        let mut editing_name = self.editing_name.clone();
+        let mut new_root = None;
         let mut new_selection = None;
         let mut new_parent = None;
         let mode = self.transform_mode;
@@ -119,8 +121,10 @@ impl App {
                         &mut scene,
                         selected,
                         &mut editing,
+                        &mut editing_name,
                         &mut new_selection,
                         &mut new_parent,
+                        &mut new_root,
                         &mut ui_action,
                     );
 
@@ -194,6 +198,15 @@ impl App {
 
         self.scene = scene;
         self.editing_entity = editing;
+        self.editing_name = editing_name;
+
+        if let Some(child) = new_root {
+            let protected_child =
+                Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
+            if !protected_child && self.scene.detach_preserve_world(child) {
+                self.history.record(capture_snapshot(&mut self.scene));
+            }
+        }
 
         if let Some((child, parent)) = new_parent {
             let protected_child =

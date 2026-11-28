@@ -7,12 +7,15 @@ pub fn show_node(
     entity: Entity,
     selected: Option<Entity>,
     editing: &mut Option<Entity>,
+    editing_name: &mut String,
     new_selection: &mut Option<Entity>,
     new_parent: &mut Option<(Entity, Entity)>,
+    new_root: &mut Option<Entity>,
 ) {
     if scene.get_name(entity) == Some("3D Cursor") {
         return;
     }
+
     let children: Vec<Entity> = scene
         .world
         .get::<engine_core::Children>(entity)
@@ -31,12 +34,18 @@ pub fn show_node(
     let (_toggle_response, header_response, _) = state
         .show_header(ui, |ui| {
             if *editing == Some(entity) {
-                let mut name = raw_name.clone();
-                let response = ui.add(egui::TextEdit::singleline(&mut name).desired_width(120.0));
+                let response =
+                    ui.add(egui::TextEdit::singleline(editing_name).desired_width(140.0));
+                if !response.has_focus() {
+                    response.request_focus();
+                }
                 if response.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    let name = editing_name.trim();
                     if !name.is_empty() {
-                        scene.set_name(entity, name);
+                        scene.set_name(entity, name.to_owned());
                     }
+                    *editing = None;
+                } else if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     *editing = None;
                 }
                 response
@@ -53,20 +62,10 @@ pub fn show_node(
                 } else {
                     egui::RichText::new(label)
                 };
-                let button = ui.add(egui::Button::selectable(is_selected, label));
-                let row_rect = egui::Rect::from_min_max(
-                    button.rect.min,
-                    egui::pos2(ui.max_rect().right(), button.rect.bottom()),
-                );
-                let response =
-                    ui.interact(row_rect, id.with("row_drag"), egui::Sense::click_and_drag());
-                if response.clicked() {
-                    *new_selection = Some(entity);
-                }
-                if response.double_clicked() {
-                    *editing = Some(entity);
-                }
-                response
+                ui.add_sized(
+                    [ui.available_width(), 22.0],
+                    egui::Button::selectable(is_selected, label),
+                )
             }
         })
         .body(|ui| {
@@ -77,14 +76,36 @@ pub fn show_node(
                     child,
                     selected,
                     editing,
+                    editing_name,
                     new_selection,
                     new_parent,
+                    new_root,
                 );
             }
         });
 
-    header_response.inner.dnd_set_drag_payload(entity);
-    if let Some(dragged) = header_response.inner.dnd_release_payload::<Entity>() {
+    let row_response = &header_response.inner;
+    if row_response.clicked() {
+        *new_selection = Some(entity);
+    }
+    if row_response.double_clicked() {
+        *editing_name = raw_name.clone();
+        *editing = Some(entity);
+    }
+    row_response.context_menu(|ui| {
+        if ui.button("Rename").clicked() {
+            *editing_name = raw_name.clone();
+            *editing = Some(entity);
+            ui.close();
+        }
+        if ui.button("Move to Scene Root").clicked() {
+            *new_root = Some(entity);
+            ui.close();
+        }
+    });
+
+    row_response.dnd_set_drag_payload(entity);
+    if let Some(dragged) = row_response.dnd_release_payload::<Entity>() {
         let child = *dragged;
         if child != entity {
             *new_parent = Some((child, entity));
