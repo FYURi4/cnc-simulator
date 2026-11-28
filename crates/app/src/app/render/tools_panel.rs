@@ -2,6 +2,7 @@ use crate::app::App;
 use crate::types::{EditMode, SelectMode, SelectTool, TransformMode, UiAction};
 
 impl App {
+    #[expect(clippy::too_many_arguments, reason = "The tools panel receives independent UI state owned by the app.")]
     pub(super) fn draw_tools_panel(
         ctx: &egui::Context,
         edit_m: EditMode,
