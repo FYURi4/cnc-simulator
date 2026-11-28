@@ -45,6 +45,7 @@ pub fn get_current_edges(faces: &[Vec<usize>]) -> Vec<(usize, usize)> {
     edge_vec
 }
 
+#[expect(dead_code, reason = "Legacy topology helper retained for geometry tooling.")]
 pub fn get_edges(kind: MeshKind) -> Vec<(usize, usize)> {
     if kind == MeshKind::Cube {
         vec![

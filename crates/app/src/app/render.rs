@@ -45,6 +45,7 @@ impl App {
         let delete_confirm = &mut self.delete_confirm;
         let delete_confirm_pos = self.delete_confirm_pos;
         let mut numeric_input_mode = self.numeric_input_mode;
+        let mut transform_space = self.transform_space;
         let numeric_overlay = self.transform_operation.as_ref().map(|op| {
             let axis = match op.axis {
                 Some(a) if a == Vec3::X => "X",
@@ -94,6 +95,7 @@ impl App {
                 color_picker_hex,
                 selected,
                 &mut numeric_input_mode,
+                &mut transform_space,
             );
 
             Self::draw_tools_panel(
@@ -148,6 +150,7 @@ impl App {
             self.numeric_input_mode = numeric_input_mode;
             self.numeric_input_mode.save();
         }
+        self.transform_space = transform_space;
 
         let gs = &mut self.grid_settings;
         let grid_type_val = match gs.grid_type {

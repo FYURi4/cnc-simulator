@@ -5,7 +5,6 @@ use crate::geometry::*;
 use crate::io::*;
 use crate::types::*;
 use bevy_ecs::prelude::*;
-use engine_core::Transform;
 use engine_render::mesh::MeshKind;
 use glam::{Vec2, Vec3};
 use winit::{
@@ -43,21 +42,28 @@ impl App {
                             KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ
                                 if self.transform_operation.is_some() && !ctrl =>
                             {
-                                let axis = match code {
-                                    KeyCode::KeyX => Vec3::X,
-                                    KeyCode::KeyY => Vec3::Y,
-                                    KeyCode::KeyZ => Vec3::Z,
+                                let axis_index = match code {
+                                    KeyCode::KeyX => 0,
+                                    KeyCode::KeyY => 1,
+                                    KeyCode::KeyZ => 2,
                                     _ => unreachable!(),
                                 };
+                                let Some(entity) =
+                                    self.transform_operation.as_ref().map(|op| op.entity)
+                                else {
+                                    return;
+                                };
+                                let axis = self.transform_axis_world(entity, axis_index);
 
                                 if let Some(op) = self.transform_operation.as_mut() {
-                                    if op.axis != Some(axis) {
+                                    if op.axis_index != Some(axis_index) {
                                         // Every axis is evaluated from the operation's original
                                         // transform. Switching axes must never commit the preview.
                                         op.numeric_input.clear();
                                         op.numeric_value = None;
                                     }
                                     op.axis = Some(axis);
+                                    op.axis_index = Some(axis_index);
                                 }
 
                                 self.apply_numeric_transform();

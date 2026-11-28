@@ -31,6 +31,13 @@ pub enum TransformMode {
     Scale,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
+pub enum TransformSpace {
+    #[default]
+    Global,
+    Local,
+}
+
 #[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NumericInputMode {
@@ -164,6 +171,7 @@ pub struct DragState {
     pub entity: Entity,
     pub mode: TransformMode,
     pub axis: Vec3,
+    pub axis_index: usize,
     pub start_world_pos: Vec3,
     pub start_mouse_screen: Vec2,
     pub pivot_screen: Vec2,
@@ -182,6 +190,7 @@ pub struct TransformOperation {
 
     // Ограничение по оси: X, Y или Z.
     pub axis: Option<Vec3>,
+    pub axis_index: Option<usize>,
 
     // Исходная трансформация объекта.
     pub start_translation: Vec3,
@@ -218,6 +227,7 @@ pub enum UiAction {
     CopySelected,
     PasteSelected,
     SetOriginToCursorConfirmed,
+    SetOriginToSelection,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

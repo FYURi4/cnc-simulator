@@ -1,6 +1,7 @@
 use crate::app::{App, ViewDirection};
 use crate::types::{
-    GridSettings, GridType, GridUnit, NumericInputMode, SnapSettings, SnapTarget, UiAction,
+    GridSettings, GridType, GridUnit, NumericInputMode, SnapSettings, SnapTarget, TransformSpace,
+    UiAction,
 };
 
 impl App {
@@ -20,6 +21,7 @@ impl App {
         color_picker_hex: &mut String,
         selected: Option<bevy_ecs::prelude::Entity>,
         numeric_input_mode: &mut NumericInputMode,
+        transform_space: &mut TransformSpace,
     ) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
@@ -81,6 +83,11 @@ impl App {
                         *ui_action = UiAction::PasteSelected;
                         ui.close();
                     }
+                });
+                ui.menu_button("Transform", |ui| {
+                    ui.label("Coordinate space");
+                    ui.selectable_value(transform_space, TransformSpace::Global, "Global");
+                    ui.selectable_value(transform_space, TransformSpace::Local, "Local");
                 });
                 ui.menu_button("Settings", |ui| {
                     ui.heading("Numeric Transform Input");

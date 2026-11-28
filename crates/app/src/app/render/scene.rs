@@ -112,6 +112,7 @@ impl App {
             self.transform_mode,
             &self.scene,
             self.viewport_size,
+            self.transform_space,
         );
     }
 }

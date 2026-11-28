@@ -40,6 +40,9 @@ impl App {
                     ui.separator();
 
                     if edit_m == EditMode::Edit && !selected_elements.is_empty() {
+                        if ui.button("Set Pivot to Active Element").clicked() {
+                            *ui_action = UiAction::SetOriginToSelection;
+                        }
                         if let Some(mut custom) = scene.world.get_mut::<CustomMesh>(sel) {
                             let mut unique_verts = std::collections::HashSet::new();
                             for s in selected_elements {
@@ -130,6 +133,39 @@ impl App {
 
                         if let Some(mut t) = scene.world.get_mut::<Transform>(sel) {
                             ui.label("Transform:");
+                            ui.label("Pivot Offset (local):");
+                            let old_pivot = t.pivot_offset;
+                            let mut new_pivot = old_pivot;
+                            let mut pivot_changed = false;
+                            egui::Grid::new("pivot_grid").num_columns(2).show(ui, |ui| {
+                                ui.label("Pivot X");
+                                let r = ui.add(egui::DragValue::new(&mut new_pivot.x).speed(0.001));
+                                pivot_changed |= r.changed();
+                                if r.drag_stopped() || r.lost_focus() {
+                                    *pending_history_record = true;
+                                }
+                                ui.end_row();
+                                ui.label("Pivot Y");
+                                let r = ui.add(egui::DragValue::new(&mut new_pivot.y).speed(0.001));
+                                pivot_changed |= r.changed();
+                                if r.drag_stopped() || r.lost_focus() {
+                                    *pending_history_record = true;
+                                }
+                                ui.end_row();
+                                ui.label("Pivot Z");
+                                let r = ui.add(egui::DragValue::new(&mut new_pivot.z).speed(0.001));
+                                pivot_changed |= r.changed();
+                                if r.drag_stopped() || r.lost_focus() {
+                                    *pending_history_record = true;
+                                }
+                                ui.end_row();
+                            });
+                            if pivot_changed {
+                                let delta = new_pivot - old_pivot;
+                                t.translation += t.rotation * (t.scale * delta);
+                                t.pivot_offset = new_pivot;
+                            }
+                            ui.separator();
                             ui.label("Scale");
                             egui::Grid::new("scale_grid").num_columns(3).show(ui, |ui| {
                                 ui.label("Scale X");

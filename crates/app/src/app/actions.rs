@@ -2,9 +2,21 @@ use crate::app::App;
 use crate::editor::*;
 use crate::io::*;
 use crate::types::*;
-use engine_core::{Parent, Transform};
+use engine_core::Transform;
 use engine_render::mesh::MeshKind;
 use glam::Vec3;
+
+fn set_object_pivot(
+    scene: &mut engine_core::Scene,
+    entity: bevy_ecs::prelude::Entity,
+    pivot: Vec3,
+) {
+    if let Some(mut transform) = scene.world.get_mut::<Transform>(entity) {
+        let delta = pivot - transform.pivot_offset;
+        transform.translation += transform.rotation * (transform.scale * delta);
+        transform.pivot_offset = pivot;
+    }
+}
 
 impl App {
     pub(super) fn apply_ui_action(&mut self, action: UiAction) {
@@ -82,32 +94,15 @@ impl App {
             }
             UiAction::SetOriginToCursorConfirmed => {
                 if let (Some(sel), Some(cursor_e)) = (self.selected, self.cursor_entity) {
-                    let cursor_pos = self
-                        .scene
-                        .global_matrix(cursor_e)
-                        .map(|m| m.w_axis.truncate())
-                        .unwrap_or(Vec3::ZERO);
-                    let obj_pos = self
-                        .scene
-                        .global_matrix(sel)
-                        .map(|m| m.w_axis.truncate())
-                        .unwrap_or(Vec3::ZERO);
-                    let delta = cursor_pos - obj_pos;
-                    if let Some(p) = self.scene.world.get::<Parent>(sel) {
-                        if let Some(pg) = self.scene.global_matrix(p.0) {
-                            let local_delta = pg.inverse().transform_vector3(delta);
-                            if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
-                                t.pivot_offset += local_delta;
-                                t.translation += local_delta;
-                            }
-                        }
-                    } else {
-                        if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
-                            t.pivot_offset += delta;
-                            t.translation += delta;
-                        }
+                    if let (Some(cursor_matrix), Some(object_matrix)) = (
+                        self.scene.global_matrix(cursor_e),
+                        self.scene.global_matrix(sel),
+                    ) {
+                        let cursor_world = cursor_matrix.w_axis.truncate();
+                        let pivot_local = object_matrix.inverse().transform_point3(cursor_world);
+                        set_object_pivot(&mut self.scene, sel, pivot_local);
+                        self.history.record(capture_snapshot(&mut self.scene));
                     }
-                    self.history.record(capture_snapshot(&mut self.scene));
                 }
             }
             UiAction::LoadGcode => {
@@ -219,45 +214,66 @@ impl App {
                 self.history.record(capture_snapshot(&mut self.scene));
             }
             UiAction::SetOriginToCursor => {
-                if let Some(sel) = self.selected {
-                    if let Some(cursor_e) = self.cursor_entity {
-                        let cursor_pos = self
-                            .scene
-                            .global_matrix(cursor_e)
-                            .map(|m| m.w_axis.truncate())
-                            .unwrap_or(Vec3::ZERO);
-                        let obj_pos = self
-                            .scene
-                            .global_matrix(sel)
-                            .map(|m| m.w_axis.truncate())
-                            .unwrap_or(Vec3::ZERO);
-                        let delta = cursor_pos - obj_pos;
-                        if let Some(p) = self.scene.world.get::<Parent>(sel) {
-                            if let Some(pg) = self.scene.global_matrix(p.0) {
-                                let local_delta = pg.inverse().transform_vector3(delta);
-                                if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
-                                    t.pivot_offset += local_delta;
-                                    t.translation += local_delta;
-                                }
-                            }
-                        } else {
-                            if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
-                                t.pivot_offset += delta;
-                                t.translation += delta;
-                            }
-                        }
+                if let (Some(sel), Some(cursor_e)) = (self.selected, self.cursor_entity) {
+                    if let (Some(cursor_matrix), Some(object_matrix)) = (
+                        self.scene.global_matrix(cursor_e),
+                        self.scene.global_matrix(sel),
+                    ) {
+                        let cursor_world = cursor_matrix.w_axis.truncate();
+                        let pivot_local = object_matrix.inverse().transform_point3(cursor_world);
+                        set_object_pivot(&mut self.scene, sel, pivot_local);
                         self.history.record(capture_snapshot(&mut self.scene));
                     }
                 }
             }
             UiAction::SetOriginToGeometry => {
                 if let Some(sel) = self.selected {
-                    if let Some(mut t) = self.scene.world.get_mut::<Transform>(sel) {
-                        let offset = t.pivot_offset;
-                        t.translation += offset;
-                        t.pivot_offset = Vec3::ZERO;
-                    }
+                    let pivot = self
+                        .scene
+                        .world
+                        .get::<CustomMesh>(sel)
+                        .map(|mesh| {
+                            if mesh.vertices.is_empty() {
+                                Vec3::ZERO
+                            } else {
+                                mesh.vertices.iter().copied().sum::<Vec3>()
+                                    / mesh.vertices.len() as f32
+                            }
+                        })
+                        .unwrap_or(Vec3::ZERO);
+                    set_object_pivot(&mut self.scene, sel, pivot);
                     self.history.record(capture_snapshot(&mut self.scene));
+                }
+            }
+            UiAction::SetOriginToSelection => {
+                if let Some(sel) = self.selected {
+                    let pivot = self
+                        .selected_elements
+                        .last()
+                        .and_then(|selection| {
+                            let mesh = self.scene.world.get::<CustomMesh>(sel)?;
+                            match selection {
+                                Selection::Vertex(index) => mesh.vertices.get(*index).copied(),
+                                Selection::Edge(a, b) => Some(
+                                    (*mesh.vertices.get(*a)? + *mesh.vertices.get(*b)?) * 0.5
+                                ),
+                                Selection::Face(indices) => {
+                                    let mut center = Vec3::ZERO;
+                                    let mut count = 0usize;
+                                    for index in indices {
+                                        if let Some(vertex) = mesh.vertices.get(*index) {
+                                            center += *vertex;
+                                            count += 1;
+                                        }
+                                    }
+                                    (count > 0).then_some(center / count as f32)
+                                }
+                            }
+                        });
+                    if let Some(pivot) = pivot {
+                        set_object_pivot(&mut self.scene, sel, pivot);
+                        self.history.record(capture_snapshot(&mut self.scene));
+                    }
                 }
             }
         }

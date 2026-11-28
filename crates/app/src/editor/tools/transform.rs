@@ -6,6 +6,49 @@ use engine_core::{Parent, Transform};
 use glam::{Quat, Vec2, Vec3};
 
 impl App {
+    fn parent_world_rotation(&self, entity: bevy_ecs::prelude::Entity) -> Quat {
+        self.scene
+            .world
+            .get::<Parent>(entity)
+            .and_then(|parent| self.scene.global_matrix(parent.0))
+            .map(|matrix| matrix.to_scale_rotation_translation().1)
+            .unwrap_or(Quat::IDENTITY)
+    }
+
+    pub(crate) fn transform_axis_world(
+        &self,
+        entity: bevy_ecs::prelude::Entity,
+        axis_index: usize,
+    ) -> Vec3 {
+        let local_axis = match axis_index {
+            0 => Vec3::X,
+            1 => Vec3::Y,
+            _ => Vec3::Z,
+        };
+        if self.transform_space == TransformSpace::Global {
+            return local_axis;
+        }
+        self.scene
+            .global_matrix(entity)
+            .map(|matrix| matrix.to_scale_rotation_translation().1 * local_axis)
+            .unwrap_or(local_axis)
+            .normalize_or_zero()
+    }
+
+    pub(crate) fn world_rotation_delta_local(
+        &self,
+        entity: bevy_ecs::prelude::Entity,
+        start_rotation: Quat,
+        world_axis: Vec3,
+        angle: f32,
+    ) -> Quat {
+        let parent_rotation = self.parent_world_rotation(entity);
+        parent_rotation.inverse()
+            * Quat::from_axis_angle(world_axis.normalize_or_zero(), angle)
+            * parent_rotation
+            * start_rotation
+    }
+
     pub(crate) fn apply_numeric_transform(&mut self) {
         let Some(op) = self.transform_operation.clone() else {
             return;
@@ -62,22 +105,30 @@ impl App {
                     .normalize();
 
                 let angle_rad = value.to_radians();
+                let parent_rotation = self.parent_world_rotation(op.entity);
+                let axis_in_parent = parent_rotation.inverse() * axis;
                 let rotation = if absolute {
                     let start = op.start_rotation.normalize();
                     let start_vector = Vec3::new(start.x, start.y, start.z);
-                    let projected = start_vector.dot(axis);
+                    let projected = start_vector.dot(axis_in_parent);
                     let twist = Quat::from_xyzw(
-                        axis.x * projected,
-                        axis.y * projected,
-                        axis.z * projected,
+                        axis_in_parent.x * projected,
+                        axis_in_parent.y * projected,
+                        axis_in_parent.z * projected,
                         start.w,
                     )
                     .normalize();
-                    let current_angle =
-                        2.0 * (Vec3::new(twist.x, twist.y, twist.z).dot(axis)).atan2(twist.w);
-                    Quat::from_axis_angle(axis, angle_rad - current_angle) * op.start_rotation
+                    let current_angle = 2.0
+                        * (Vec3::new(twist.x, twist.y, twist.z).dot(axis_in_parent))
+                            .atan2(twist.w);
+                    self.world_rotation_delta_local(
+                        op.entity,
+                        op.start_rotation,
+                        axis,
+                        angle_rad - current_angle,
+                    )
                 } else {
-                    Quat::from_axis_angle(axis, angle_rad) * op.start_rotation
+                    self.world_rotation_delta_local(op.entity, op.start_rotation, axis, angle_rad)
                 };
 
                 if let Some(mut t) = self.scene.world.get_mut::<Transform>(op.entity) {
@@ -91,27 +142,27 @@ impl App {
                 }
 
                 let scale = if absolute {
-                    match op.axis {
-                        Some(axis) if axis == Vec3::X => {
+                    match op.axis_index {
+                        Some(0) => {
                             Vec3::new(value, op.start_scale.y, op.start_scale.z)
                         }
-                        Some(axis) if axis == Vec3::Y => {
+                        Some(1) => {
                             Vec3::new(op.start_scale.x, value, op.start_scale.z)
                         }
-                        Some(axis) if axis == Vec3::Z => {
+                        Some(2) => {
                             Vec3::new(op.start_scale.x, op.start_scale.y, value)
                         }
                         _ => Vec3::splat(value),
                     }
                 } else {
-                    match op.axis {
-                        Some(axis) if axis == Vec3::X => {
+                    match op.axis_index {
+                        Some(0) => {
                             Vec3::new(op.start_scale.x * value, op.start_scale.y, op.start_scale.z)
                         }
-                        Some(axis) if axis == Vec3::Y => {
+                        Some(1) => {
                             Vec3::new(op.start_scale.x, op.start_scale.y * value, op.start_scale.z)
                         }
-                        Some(axis) if axis == Vec3::Z => {
+                        Some(2) => {
                             Vec3::new(op.start_scale.x, op.start_scale.y, op.start_scale.z * value)
                         }
                         _ => op.start_scale * value,
@@ -185,6 +236,7 @@ impl App {
             entity,
             mode,
             axis: None,
+            axis_index: None,
 
             start_translation,
             start_rotation,
@@ -303,7 +355,12 @@ impl App {
                     .axis
                     .unwrap_or_else(|| state.camera.forward())
                     .normalize();
-                let new_rot = Quat::from_axis_angle(axis, angle) * operation.start_rotation;
+                let new_rot = self.world_rotation_delta_local(
+                    operation.entity,
+                    operation.start_rotation,
+                    axis,
+                    angle,
+                );
                 if let Some(mut transform) = self.scene.world.get_mut::<Transform>(operation.entity)
                 {
                     transform.rotation = new_rot;
@@ -328,18 +385,18 @@ impl App {
                     delta.x * 0.01
                 };
                 let factor = (1.0 + scale_delta).max(0.01);
-                let new_scale = match operation.axis {
-                    Some(a) if a == Vec3::X => Vec3::new(
+                let new_scale = match operation.axis_index {
+                    Some(0) => Vec3::new(
                         operation.start_scale.x * factor,
                         operation.start_scale.y,
                         operation.start_scale.z,
                     ),
-                    Some(a) if a == Vec3::Y => Vec3::new(
+                    Some(1) => Vec3::new(
                         operation.start_scale.x,
                         operation.start_scale.y * factor,
                         operation.start_scale.z,
                     ),
-                    Some(a) if a == Vec3::Z => Vec3::new(
+                    Some(2) => Vec3::new(
                         operation.start_scale.x,
                         operation.start_scale.y,
                         operation.start_scale.z * factor,

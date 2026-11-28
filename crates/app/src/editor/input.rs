@@ -23,6 +23,7 @@ pub fn handle_lmb_press(
     scene: &mut Scene,
     render_map: &[(Entity, usize)],
     cursor_entity: Option<Entity>,
+    transform_space: TransformSpace,
 ) {
     let (ray_o, ray_d) = ray_from_screen(&state.camera, input.cursor_pos, viewport_size);
 
@@ -79,16 +80,27 @@ pub fn handle_lmb_press(
         }
 
         let gizmo_scale = gizmo_world_scale(state, viewport_size, gizmo_pos);
+        let gizmo_rotation = if transform_space == TransformSpace::Local {
+            scene
+                .global_matrix(sel)
+                .map(|matrix| matrix.to_scale_rotation_translation().1)
+                .unwrap_or(glam::Quat::IDENTITY)
+        } else {
+            glam::Quat::IDENTITY
+        };
         let axis_idx = match mode {
-            TransformMode::Rotate => pick_gizmo_ring(ray_o, ray_d, gizmo_pos, gizmo_scale),
-            _ => pick_gizmo(ray_o, ray_d, gizmo_pos, gizmo_scale),
+            TransformMode::Rotate => {
+                pick_gizmo_ring(ray_o, ray_d, gizmo_pos, gizmo_scale, gizmo_rotation)
+            }
+            _ => pick_gizmo(ray_o, ray_d, gizmo_pos, gizmo_scale, gizmo_rotation),
         };
         if let Some(idx) = axis_idx {
-            let axis = match idx {
+            let local_axis = match idx {
                 0 => Vec3::X,
                 1 => Vec3::Y,
                 _ => Vec3::Z,
             };
+            let axis = gizmo_rotation * local_axis;
             let pivot_screen = world_to_screen(&state.camera, viewport_size, gizmo_pos);
             let axis_world_length = gizmo_scale * 0.45;
             let screen_axis_dir = world_to_screen(
@@ -124,6 +136,7 @@ pub fn handle_lmb_press(
                 entity: sel,
                 mode,
                 axis,
+                axis_index: idx,
                 start_world_pos: gizmo_pos,
                 start_mouse_screen: input.cursor_pos,
                 pivot_screen,

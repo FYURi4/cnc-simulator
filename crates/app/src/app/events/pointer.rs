@@ -169,8 +169,12 @@ impl App {
                                 let step = 15.0_f32.to_radians();
                                 delta_a = (delta_a / step).round() * step;
                             }
-                            let new_rot =
-                                Quat::from_axis_angle(drag.axis, delta_a) * drag.start_rotation;
+                            let new_rot = self.world_rotation_delta_local(
+                                drag.entity,
+                                drag.start_rotation,
+                                drag.axis,
+                                delta_a,
+                            );
                             if let Some(mut t) = self.scene.world.get_mut::<Transform>(drag.entity)
                             {
                                 t.rotation = new_rot;
@@ -181,7 +185,7 @@ impl App {
                             if len_sq > 1.0 {
                                 let proj =
                                     d.dot(drag.screen_axis_dir) / len_sq * drag.axis_world_length;
-                                let axis_idx = axis_index(drag.axis);
+                                let axis_idx = drag.axis_index;
                                 let start_v = axis_comp(drag.start_scale, axis_idx);
                                 let new_v = (start_v + proj).max(0.01);
                                 let mut new_scale = drag.start_scale;
@@ -228,6 +232,7 @@ impl App {
                             &mut self.scene,
                             &self.render_map,
                             self.cursor_entity,
+                            self.transform_space,
                         );
                     }
                 } else {
