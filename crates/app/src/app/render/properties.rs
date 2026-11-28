@@ -7,7 +7,10 @@ use engine_render::mesh::Vertex;
 use glam::Vec3;
 
 impl App {
-    #[expect(clippy::too_many_arguments, reason = "The properties panel edits several independent editor resources.")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The properties panel edits several independent editor resources.",
+    )]
     pub(super) fn draw_properties_panel(
         ui: &mut egui::Ui,
         scene: &mut Scene,
