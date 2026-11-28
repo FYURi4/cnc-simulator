@@ -59,6 +59,7 @@ pub fn gizmo_world_scale(state: &State, viewport_size: Vec2, world_pos: Vec3) ->
     (world_view_height * 85.0 / viewport_height / 0.45).clamp(1e-5, 1e5)
 }
 
+#[expect(clippy::too_many_arguments, reason = "Gizmo placement combines editor selection, scene, camera, and viewport inputs.")]
 pub fn update_gizmo_positions(
     state: &mut State,
     gizmo: Option<&GizmoHandles>,
