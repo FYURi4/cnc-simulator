@@ -115,8 +115,13 @@ impl App {
                 .default_width(280.0)
                 .show(ctx, |ui| {
                     Self::draw_outliner(
-                        ui, &mut scene, selected, &mut editing, &mut new_selection,
-                        &mut new_parent, &mut ui_action,
+                        ui,
+                        &mut scene,
+                        selected,
+                        &mut editing,
+                        &mut new_selection,
+                        &mut new_parent,
+                        &mut ui_action,
                     );
 
                     Self::draw_properties_panel(
@@ -191,9 +196,12 @@ impl App {
         self.editing_entity = editing;
 
         if let Some((child, parent)) = new_parent {
-            let protected_child = Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
-            let protected_parent = Some(parent) == self.grid_entity || Some(parent) == self.cursor_entity;
-            if !protected_child && !protected_parent
+            let protected_child =
+                Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
+            let protected_parent =
+                Some(parent) == self.grid_entity || Some(parent) == self.cursor_entity;
+            if !protected_child
+                && !protected_parent
                 && self.scene.reparent_preserve_world(child, parent)
             {
                 self.history.record(capture_snapshot(&mut self.scene));

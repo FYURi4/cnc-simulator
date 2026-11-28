@@ -1,6 +1,6 @@
 use crate::app::App;
-use crate::ui::show_node;
 use crate::types::UiAction;
+use crate::ui::show_node;
 use bevy_ecs::prelude::*;
 use engine_core::{Parent, Scene};
 
@@ -40,7 +40,15 @@ impl App {
                             .collect::<Vec<_>>()
                     };
                     for root in roots {
-                        show_node(ui, scene, root, selected, editing, new_selection, new_parent);
+                        show_node(
+                            ui,
+                            scene,
+                            root,
+                            selected,
+                            editing,
+                            new_selection,
+                            new_parent,
+                        );
                     }
                 });
             });

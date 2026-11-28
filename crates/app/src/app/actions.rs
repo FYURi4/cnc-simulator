@@ -43,7 +43,8 @@ impl App {
                 self.scene.set_name(folder, "Collection");
                 self.scene.world.entity_mut(folder).insert(Folder);
                 if let Some(child) = self.selected {
-                    let protected = Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
+                    let protected =
+                        Some(child) == self.grid_entity || Some(child) == self.cursor_entity;
                     if !protected {
                         self.scene.reparent_preserve_world(child, folder);
                     }

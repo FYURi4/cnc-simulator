@@ -127,7 +127,9 @@ pub fn paste_node(
     let is_grid = node.name == "Grid";
     let is_cursor = node.name == "3D Cursor";
     let is_folder = node.is_folder;
-    if is_folder { scene.world.entity_mut(e).insert(Folder); }
+    if is_folder {
+        scene.world.entity_mut(e).insert(Folder);
+    }
     let obj_kind = if is_grid {
         ObjectKind::Grid
     } else if is_cursor {

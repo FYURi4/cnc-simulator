@@ -39,14 +39,24 @@ impl App {
                     }
                     ui.separator();
 
-                    let object_dimensions = scene.world.get::<CustomMesh>(sel).and_then(|mesh| {
-                        if mesh.vertices.is_empty() { return None; }
-                        let mut min = Vec3::splat(f32::INFINITY);
-                        let mut max = Vec3::splat(f32::NEG_INFINITY);
-                        for vertex in &mesh.vertices { min = min.min(*vertex); max = max.max(*vertex); }
-                        let scale = scene.world.get::<Transform>(sel).map(|t| t.scale.abs()).unwrap_or(Vec3::ONE);
-                        Some((max - min) * scale * 1000.0)
-                    });
+                    let object_dimensions =
+                        scene.world.get::<CustomMesh>(sel).and_then(|mesh| {
+                            if mesh.vertices.is_empty() {
+                                return None;
+                            }
+                            let mut min = Vec3::splat(f32::INFINITY);
+                            let mut max = Vec3::splat(f32::NEG_INFINITY);
+                            for vertex in &mesh.vertices {
+                                min = min.min(*vertex);
+                                max = max.max(*vertex);
+                            }
+                            let scale = scene
+                                .world
+                                .get::<Transform>(sel)
+                                .map(|t| t.scale.abs())
+                                .unwrap_or(Vec3::ONE);
+                            Some((max - min) * scale * 1000.0)
+                        });
                     if let Some(size) = object_dimensions {
                         ui.label("Dimensions:");
                         ui.horizontal(|ui| {
@@ -298,7 +308,9 @@ impl App {
                                     );
                                 }
                             });
-                            if t.scale != initial_scale { *pending_history_record = true; }
+                            if t.scale != initial_scale {
+                                *pending_history_record = true;
+                            }
                         }
                     }
                 } else if let Some(cursor_e) = cursor_e {
