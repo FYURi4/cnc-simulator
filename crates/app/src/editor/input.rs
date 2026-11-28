@@ -6,7 +6,10 @@ use engine_core::{Scene, Transform};
 use engine_render::state::State;
 use glam::{Vec2, Vec3};
 use std::collections::HashSet;
-#[expect(clippy::too_many_arguments, reason = "Pointer selection updates several separately owned editor resources.")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Pointer selection updates several separately owned editor resources.",
+)]
 pub fn handle_lmb_press(
     state: &mut State,
     input: &InputState,
