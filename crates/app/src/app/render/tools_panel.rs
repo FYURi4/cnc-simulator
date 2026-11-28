@@ -1,6 +1,5 @@
 use crate::app::App;
 use crate::types::{EditMode, SelectMode, SelectTool, TransformMode, UiAction};
-use egui;
 
 impl App {
     pub(super) fn draw_tools_panel(
