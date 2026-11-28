@@ -5,9 +5,13 @@ use engine_render::mesh::MeshKind;
 use engine_render::state::{ObjectKind, RenderObject};
 use glam::{Vec2, Vec3};
 
-use super::topology::get_edges;
+use super::topology::{get_current_edges, get_current_faces};
 use crate::types::*;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Snapping combines position, settings, scene, and render data without shared ownership."
+)]
 #[expect(
     clippy::too_many_arguments,
     reason = "Snapping combines position, settings, scene, and render data without shared ownership."
@@ -17,6 +21,7 @@ pub fn apply_snap(
     start_pos: Vec3,
     axis: Vec3,
     snap: &SnapSettings,
+    grid: &GridSettings,
     scene: &Scene,
     render_map: &[(Entity, usize)],
     objects: &[RenderObject],
@@ -25,64 +30,118 @@ pub fn apply_snap(
     if !snap.enabled {
         return pos;
     }
+
+    let direction = axis.normalize_or_zero();
     match snap.target {
-        SnapTarget::Increment | SnapTarget::Grid => {
-            let dist = (pos - start_pos).dot(axis);
-            start_pos + axis * ((dist / snap.increment).round() * snap.increment)
+        SnapTarget::Increment => {
+            let step = snap.increment.max(1e-6);
+            let distance = (pos - start_pos).dot(direction);
+            start_pos + direction * ((distance / step).round() * step)
+        }
+        SnapTarget::Grid => {
+            // Grid coordinates are expressed in metres; the UI stores millimetres.
+            // Grid styles (lines/dots/major dots) share the same underlying lattice.
+            let step_x = (grid.step_x / 1000.0).max(1e-6);
+            let step_z = (grid.step_y / 1000.0).max(1e-6);
+
+            if direction.length_squared() < 1e-6 {
+                return Vec3::new(
+                    (pos.x / step_x).round() * step_x,
+                    pos.y,
+                    (pos.z / step_z).round() * step_z,
+                );
+            }
+
+            if direction.x.abs() > 0.999 {
+                let target_x = (pos.x / step_x).round() * step_x;
+                start_pos + direction * ((target_x - start_pos.x) / direction.x)
+            } else if direction.z.abs() > 0.999 {
+                let target_z = (pos.z / step_z).round() * step_z;
+                start_pos + direction * ((target_z - start_pos.z) / direction.z)
+            } else {
+                // For local/oblique axes, use the effective grid spacing projected
+                // onto that axis instead of silently falling back to Snap.increment.
+                let projected_step = ((direction.x * step_x).powi(2)
+                    + (direction.z * step_z).powi(2))
+                .sqrt();
+                let step = if projected_step > 1e-6 {
+                    projected_step
+                } else {
+                    snap.increment.max(1e-6)
+                };
+                let distance = (pos - start_pos).dot(direction);
+                start_pos + direction * ((distance / step).round() * step)
+            }
         }
         SnapTarget::Origin => {
-            if pos.length() < 0.5 {
-                Vec3::ZERO
+            if direction.length_squared() < 1e-6 {
+                return if pos.length() < 0.2 { Vec3::ZERO } else { pos };
+            }
+            let origin_projection = start_pos - direction * start_pos.dot(direction);
+            if (pos - origin_projection).length() < 0.2 {
+                origin_projection
             } else {
                 pos
             }
         }
         SnapTarget::Vertex | SnapTarget::Edge => {
-            let mut best_dist = 0.2f32;
+            let mut best_dist = 0.2_f32;
             let mut best_point = pos;
 
-            for (e, idx) in render_map {
-                if *e == ignore_entity {
-                    continue;
-                }
-                if objects[*idx].kind != ObjectKind::Solid {
+            for (entity, object_idx) in render_map {
+                if *entity == ignore_entity
+                    || objects.get(*object_idx).is_none_or(|object| object.kind != ObjectKind::Solid)
+                {
                     continue;
                 }
 
-                if let Some(gt) = scene.global_matrix(*e) {
-                    let (amin, amax) = match objects[*idx].mesh_kind {
-                        Some(MeshKind::Plane) => {
-                            (Vec3::new(-0.5, -0.1, -0.5), Vec3::new(0.5, 0.1, 0.5))
-                        }
-                        _ => (Vec3::splat(-0.05), Vec3::splat(0.05)),
-                    };
+                let Some(global) = scene.global_matrix(*entity) else {
+                    continue;
+                };
+                let Some(custom) = scene.world.get::<CustomMesh>(*entity) else {
+                    continue;
+                };
 
-                    let mut corners = Vec::new();
-                    for x in [amin.x, amax.x] {
-                        for y in [amin.y, amax.y] {
-                            for z in [amin.z, amax.z] {
-                                corners.push(gt.transform_point3(Vec3::new(x, y, z)));
-                            }
+                if snap.target == SnapTarget::Vertex {
+                    for &vertex in &custom.vertices {
+                        let world_vertex = global.transform_point3(vertex);
+                        let candidate = if direction.length_squared() > 1e-6 {
+                            start_pos + direction * (world_vertex - start_pos).dot(direction)
+                        } else {
+                            world_vertex
+                        };
+                        let distance = (candidate - pos).length();
+                        if distance < best_dist {
+                            best_dist = distance;
+                            best_point = candidate;
                         }
                     }
-
-                    if snap.target == SnapTarget::Vertex {
-                        for c in &corners {
-                            let d = (*c - pos).length();
-                            if d < best_dist {
-                                best_dist = d;
-                                best_point = *c;
-                            }
+                } else {
+                    let kind = scene
+                        .world
+                        .get::<MeshKindComp>(*entity)
+                        .map(|component| component.0)
+                        .unwrap_or(MeshKind::Cube);
+                    let faces = get_current_faces(scene, *entity, kind);
+                    for (a, b) in get_current_edges(&faces) {
+                        let world_a = global.transform_point3(custom.vertices[a]);
+                        let world_b = global.transform_point3(custom.vertices[b]);
+                        let edge = world_b - world_a;
+                        let edge_len_sq = edge.length_squared();
+                        if edge_len_sq < 1e-10 {
+                            continue;
                         }
-                    } else {
-                        let edges = get_edges(MeshKind::Cube);
-                        for (i, j) in edges {
-                            let mid = (corners[i] + corners[j]) * 0.5;
-                            let d = (mid - pos).length();
-                            if d < best_dist {
-                                best_dist = d;
-                                best_point = mid;
-                            }
+                        let t = ((pos - world_a).dot(edge) / edge_len_sq).clamp(0.0, 1.0);
+                        let edge_point = world_a + edge * t;
+                        let candidate = if direction.length_squared() > 1e-6 {
+                            start_pos + direction * (edge_point - start_pos).dot(direction)
+                        } else {
+                            edge_point
+                        };
+                        let distance = (candidate - pos).length();
+                        if distance < best_dist {
+                            best_dist = distance;
+                            best_point = candidate;
                         }
                     }
                 }
