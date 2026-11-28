@@ -450,8 +450,8 @@ impl App {
                                                 center /= verts.len() as f32;
                                                 cm.vertices[target] = center;
                                                 for face in &mut faces {
-                                                    for vertex in &mut face {
-                                                        if verts[1..].contains(vertex) {
+                                                    for vertex in face.iter_mut() {
+                                                        if verts[1..].contains(&*vertex) {
                                                             *vertex = target;
                                                         }
                                                     }
