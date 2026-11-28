@@ -55,7 +55,7 @@ pub fn add_mesh_node(
         MeshKind::Cylinder => {
             let mut verts = vec![
                 glam::Vec3::new(0.0, 0.0, 0.0),
-                glam::Vec3::new(0.0, 0.1, 0.0),
+                glam::Vec3::new(0.0, 0.01, 0.0),
             ];
             let radius = 0.005; // 5mm radius = 10mm diameter
             let height = 0.01; // 10mm height
@@ -126,6 +126,8 @@ pub fn paste_node(
 
     let is_grid = node.name == "Grid";
     let is_cursor = node.name == "3D Cursor";
+    let is_folder = node.is_folder;
+    if is_folder { scene.world.entity_mut(e).insert(Folder); }
     let obj_kind = if is_grid {
         ObjectKind::Grid
     } else if is_cursor {
@@ -133,7 +135,9 @@ pub fn paste_node(
     } else {
         ObjectKind::Solid
     };
-    let kind_opt = if is_grid {
+    let kind_opt = if is_folder {
+        None
+    } else if is_grid {
         Some(MeshKind::Plane)
     } else if is_cursor {
         Some(MeshKind::Cursor3D)
@@ -156,6 +160,7 @@ pub fn paste_node(
             state.set_object_tint(idx, [1.0, 0.2, 0.2, 1.0]);
         }
         render_map.push((e, idx));
+        crate::editor::update_object_mesh(state, scene, render_map, e, &[]);
     }
     if let Some(p) = parent {
         scene.set_parent(e, p);

@@ -100,6 +100,7 @@ pub fn spawn_saved_node(
             state.set_object_tint(idx, [1.0, 0.2, 0.2, 1.0]);
         }
         render_map.push((e, idx));
+        crate::editor::update_object_mesh(state, scene, render_map, e, &[]);
     }
     if let Some(p) = parent {
         scene.set_parent(e, p);

@@ -45,7 +45,7 @@ pub fn show_node(
                     if combined.double_clicked() { *editing = Some(entity); }
                 }
             })
-        })
+        }).inner
     });
     if let Some(dragged) = dropped {
         let child = *dragged;
