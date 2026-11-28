@@ -3,6 +3,7 @@ use crate::types::UiAction;
 use glam::Vec2;
 
 impl App {
+    #[expect(clippy::too_many_arguments, reason = "Dialog rendering coordinates independent pieces of UI state.")]
     pub(super) fn draw_dialogs(
         ctx: &egui::Context,
         drag_start: Option<Vec2>,
