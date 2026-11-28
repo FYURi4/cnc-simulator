@@ -31,17 +31,12 @@ pub enum TransformMode {
     Scale,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NumericInputMode {
+    #[default]
     Absolute,
     Relative,
-}
-
-impl Default for NumericInputMode {
-    fn default() -> Self {
-        Self::Absolute
-    }
 }
 
 impl NumericInputMode {
