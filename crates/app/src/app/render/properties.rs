@@ -2,7 +2,6 @@ use crate::app::App;
 use crate::geometry::*;
 use crate::types::*;
 use bevy_ecs::prelude::*;
-use egui;
 use engine_core::{Scene, Transform};
 use engine_render::mesh::Vertex;
 use glam::Vec3;
