@@ -8,6 +8,10 @@ use glam::{Vec2, Vec3};
 use super::topology::{get_current_edges, get_current_faces};
 use crate::types::*;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Snap evaluation needs scene, grid, and renderer context.",
+)]
 pub fn apply_snap(
     pos: Vec3,
     start_pos: Vec3,
@@ -153,16 +157,6 @@ pub fn apply_snap(
             }
             best_point
         }
-    }
-}
-
-pub fn axis_index(v: Vec3) -> usize {
-    if v.x.abs() > 0.5 {
-        0
-    } else if v.y.abs() > 0.5 {
-        1
-    } else {
-        2
     }
 }
 
