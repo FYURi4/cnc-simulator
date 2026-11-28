@@ -80,11 +80,8 @@ impl ApplicationHandler for App {
                 state.update_camera();
             }
 
-            WindowEvent::RedrawRequested => {
-                if !self.render_frame() {
-                    event_loop.exit();
-                }
-            }
+            WindowEvent::RedrawRequested if !self.render_frame() => event_loop.exit(),
+            WindowEvent::RedrawRequested => {}
             _ => {}
         }
     }
